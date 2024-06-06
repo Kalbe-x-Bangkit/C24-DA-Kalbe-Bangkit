@@ -37,7 +37,7 @@ def process_image(image, enhancement_type, fix_monochrome=True):
         return [usm(image, radius, amount)]
 
     def hist_eq(image):
-    return [cv2.equalizeHist(image)]
+        return [cv2.equalizeHist(image)]
 
     def enhance_image(image, enhancement_type):
         if enhancement_type == "Invert":
