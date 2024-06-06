@@ -4,13 +4,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def process_image(image, enhancement_type, fix_monochrome=True):
-    def image2array(image, fix_monochrome=True):
-        if fix_monochrome and image.mean() > 127:
-            image = 255 - image
+    def image2array(path, fix_monochrome=True):
+        # Read image with OpenCV
+        image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+        # Image normalization
         image = image - np.min(image)
         image = image / np.max(image)
         image = (image * 255).astype(np.uint8)
-        return image
+
+    return image
 
     image = image2array(image)
 
