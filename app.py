@@ -12,6 +12,8 @@ def process_image(image, enhancement_type, fix_monochrome=True):
         image = (image * 255).astype(np.uint8)
         return image
 
+    image = image2array(image)
+
     def apply_clahe(image):
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10, 10))
         return clahe.apply(image)
@@ -19,15 +21,23 @@ def process_image(image, enhancement_type, fix_monochrome=True):
     def invert(image):
         return cv2.bitwise_not(image)
 
-    def high_pass_filter(image):
-        kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
-        return cv2.filter2D(image, -1, kernel)
+    def hp_filter(image, kernel=None):
+        if kernel is None:
+            kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
 
-    def apply_unsharp_mask(image):
-        return unsharp_mask(image, radius=1, amount=1.5)
+        return [cv2.filter2D(image, -1, kernel)]
 
-    def histogram_equalization(image):
-        return cv2.equalizeHist(image)
+    def unsharp_mask(image, radius=5, amount=2):
+
+        def usm(image, radius, amount):
+            blurred = cv2.GaussianBlur(image, (0, 0), radius)
+            sharpened = cv2.addWeighted(image, 1.0 + amount, blurred, -amount, 0)
+            return sharpened
+
+        return [usm(image, radius, amount)]
+
+    def hist_eq(image):
+    return [cv2.equalizeHist(image)]
 
     def enhance_image(image, enhancement_type):
         if enhancement_type == "Invert":
