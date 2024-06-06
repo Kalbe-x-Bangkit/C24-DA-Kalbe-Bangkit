@@ -1,0 +1,7 @@
+gradio
+opencv-python-headless
+numpy
+scikit-image
+pydicom
+matplotlib
+scipy
