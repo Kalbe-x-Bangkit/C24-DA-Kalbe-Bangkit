@@ -1,51 +1,52 @@
 import cv2
 import gradio as gr
 import numpy as np
-from skimage.filters import unsharp_mask
+import matplotlib.pyplot as plt
 
-def invert(image):
-    return cv2.bitwise_not(image)
+def process_image(image, enhancement_type, fix_monochrome=True):
+    def image2array(image, fix_monochrome=True):
+        if fix_monochrome and image.mean() > 127:
+            image = 255 - image
+        image = image - np.min(image)
+        image = image / np.max(image)
+        image = (image * 255).astype(np.uint8)
+        return image
 
-def high_pass_filter(image):
-    kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
-    return cv2.filter2D(image, -1, kernel)
+    def apply_clahe(image):
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10, 10))
+        return clahe.apply(image)
 
-def apply_unsharp_mask(image):
-    # Skimage's unsharp_mask returns a float image, so we need to convert it back to uint8
-    image = unsharp_mask(image, radius=1, amount=1.5)
-    return (image * 255).astype(np.uint8)
+    def invert(image):
+        return cv2.bitwise_not(image)
 
-def histogram_equalization(image):
-    return cv2.equalizeHist(image)
+    def high_pass_filter(image):
+        kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+        return cv2.filter2D(image, -1, kernel)
 
-def clahe(image):
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    return clahe.apply(image)
+    def apply_unsharp_mask(image):
+        return unsharp_mask(image, radius=1, amount=1.5)
 
-def enhance_image(image, enhancement_type):
-    print(f"Enhancement type: {enhancement_type}")
-    # Convert image to grayscale if it's not already
-    if len(image.shape) == 3 and image.shape[2] == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    print(f"Image shape after conversion to grayscale (if needed): {image.shape}")
+    def histogram_equalization(image):
+        return cv2.equalizeHist(image)
 
-    if enhancement_type == "Invert":
-        enhanced_image = invert(image)
-    elif enhancement_type == "High Pass Filter":
-        enhanced_image = high_pass_filter(image)
-    elif enhancement_type == "Unsharp Masking":
-        enhanced_image = apply_unsharp_mask(image)
-    elif enhancement_type == "Histogram Equalization":
-        enhanced_image = histogram_equalization(image)
-    elif enhancement_type == "CLAHE":
-        enhanced_image = clahe(image)
+    def enhance_image(image, enhancement_type):
+        if enhancement_type == "Invert":
+            return invert(image)
+        elif enhancement_type == "High Pass Filter":
+            return high_pass_filter(image)
+        elif enhancement_type == "Unsharp Masking":
+            return apply_unsharp_mask(image)
+        elif enhancement_type == "Histogram Equalization":
+            return histogram_equalization(image)
+        elif enhancement_type == "CLAHE":
+            return apply_clahe(image)
 
-    print(f"Enhanced image shape: {enhanced_image.shape}")
+    image = image2array(image, fix_monochrome)
+    enhanced_image = enhance_image(image, enhancement_type)
     return enhanced_image
 
 iface = gr.Interface(
-    fn=enhance_image,
+    fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Chest X-ray Image"),
         gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type")
