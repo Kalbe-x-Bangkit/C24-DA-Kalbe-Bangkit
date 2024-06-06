@@ -1,7 +1,6 @@
 import cv2
-import numpy as np
 import gradio as gr
-from skimage import exposure
+import numpy as np
 from skimage.filters import unsharp_mask
 
 def invert(image):
@@ -12,7 +11,9 @@ def high_pass_filter(image):
     return cv2.filter2D(image, -1, kernel)
 
 def apply_unsharp_mask(image):
-    return unsharp_mask(image, radius=1, amount=1.5)
+    # Skimage's unsharp_mask returns a float image, so we need to convert it back to uint8
+    image = unsharp_mask(image, radius=1, amount=1.5)
+    return (image * 255).astype(np.uint8)
 
 def histogram_equalization(image):
     return cv2.equalizeHist(image)
@@ -22,16 +23,26 @@ def clahe(image):
     return clahe.apply(image)
 
 def enhance_image(image, enhancement_type):
+    print(f"Enhancement type: {enhancement_type}")
+    # Convert image to grayscale if it's not already
+    if len(image.shape) == 3 and image.shape[2] == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    print(f"Image shape after conversion to grayscale (if needed): {image.shape}")
+
     if enhancement_type == "Invert":
-        return invert(image)
+        enhanced_image = invert(image)
     elif enhancement_type == "High Pass Filter":
-        return high_pass_filter(image)
+        enhanced_image = high_pass_filter(image)
     elif enhancement_type == "Unsharp Masking":
-        return apply_unsharp_mask(image)
+        enhanced_image = apply_unsharp_mask(image)
     elif enhancement_type == "Histogram Equalization":
-        return histogram_equalization(image)
+        enhanced_image = histogram_equalization(image)
     elif enhancement_type == "CLAHE":
-        return clahe(image)
+        enhanced_image = clahe(image)
+
+    print(f"Enhanced image shape: {enhanced_image.shape}")
+    return enhanced_image
 
 iface = gr.Interface(
     fn=enhance_image,
