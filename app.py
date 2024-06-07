@@ -159,14 +159,6 @@ iface1 = gr.Interface(
 
 iface2 = gr.Interface(
     fn=display_metadata,
-    inputs=gr.inputs.File(file_count="single", label="Upload DICOM File"),
-    outputs=gr.outputs.Dataframe(label="DICOM Metadata"),
-    title="DICOM Metadata Extractor",
-    description="Upload a DICOM file to extract and view its metadata."
-)
-
-iface2 = gr.Interface(
-    fn=display_metadata,
     inputs=gr.File(label="Upload DICOM File"),
     outputs=gr.Dataframe(label="DICOM Metadata"),
     title="DICOM Metadata Extractor",
