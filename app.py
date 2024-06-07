@@ -3,8 +3,8 @@ import gradio as gr
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.models import load_model
+from keras.preprocessing import image
+from keras.models import load_model
 
 # Load the pre-trained models
 model_path = 'model/densenet.hdf5'
