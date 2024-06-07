@@ -45,7 +45,7 @@ def process_image(original_image, enhancement_type, annotations, fix_monochrome=
     maxerr = calculate_maxerr(original_image, enhanced_image)
     l2rat = calculate_l2rat(original_image, enhanced_image)
     
-    return enhanced_image, mse, psnr, maxerr, l2rat
+    return enhanced_image, annotated_image, mse, psnr, maxerr, l2rat
 
 def apply_clahe(image):
     clahe = cv2.createCLAHE(clipLimit=40.0, tileGridSize=(10, 10))
@@ -94,8 +94,6 @@ def annotate_image(image, annotations):
         image = cv2.rectangle(image, start_point, end_point, color, thickness)
         image = cv2.putText(image, label, start_point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
     return image
-
-
 
 iface = gr.Interface(
     fn=process_image,
