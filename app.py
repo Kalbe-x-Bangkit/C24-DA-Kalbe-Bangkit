@@ -102,10 +102,11 @@ iface = gr.Interface(
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
         gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
-        gr.AnnotatedImage(label="Annotations", interactive=True)
+        gr.AnnotatedImage(label="Annotations")
     ],
     outputs=[
         gr.Image(type="numpy", label="Enhanced Image"),
+        gr.Image(type="numpy", label="Annotated Original Image"),
         gr.Textbox(label="MSE"),
         gr.Textbox(label="PSNR"),
         gr.Textbox(label="Maxerr"),
