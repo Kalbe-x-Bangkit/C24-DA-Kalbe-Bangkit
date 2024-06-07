@@ -1,6 +1,8 @@
 import cv2
 import gradio as gr
 import numpy as np
+import pydicom
+import pandas as pd
 
 ### ENHANCEMENT CODE
 
