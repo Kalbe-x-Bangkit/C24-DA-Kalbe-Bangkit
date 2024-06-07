@@ -35,6 +35,9 @@ def process_image(original_image, enhancement_type, fix_monochrome=True):
     
     # Enhance the image based on selection
     enhanced_image = enhance_image(image, enhancement_type)
+
+    # Annotate the original image
+    annotated_image = annotate_image(original_image, annotations)
     
     # Calculate image quality metrics
     mse = calculate_mse(original_image, enhanced_image)
