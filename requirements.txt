@@ -5,3 +5,5 @@ scikit-image
 pydicom
 matplotlib
 scipy
+tensorflow
+keras
