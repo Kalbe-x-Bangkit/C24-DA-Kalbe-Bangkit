@@ -85,7 +85,8 @@ def save_image(image):
     img = Image.fromarray(image)
     byte_io = io.BytesIO()
     img.save(byte_io, format='PNG')
-    return byte_io.getvalue()
+    byte_io.seek(0)
+    return byte_io
 
 iface = gr.Interface(
     fn=process_image,
@@ -99,7 +100,7 @@ iface = gr.Interface(
         gr.Textbox(label="PSNR"),
         gr.Textbox(label="Maxerr"),
         gr.Textbox(label="L2Rat"),
-        gr.Button(label="Save Image", type="button", onclick=save_image)
+        gr.Button("Save Image")
     ],
     title="Image Enhancement and Quality Evaluation"
 )
