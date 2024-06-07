@@ -126,10 +126,18 @@ def enhance_image(image, enhancement_type):
 def extract_dicom_metadata(dicom_file):
     """Extract metadata from a DICOM file and return as a DataFrame."""
     ds = pydicom.dcmread(dicom_file.name)
-    metadata = {elem.keyword: elem.value for elem in ds if elem.keyword}
+    metadata = []
+    for elem in ds:
+        metadata.append([
+            f"{elem.tag.group:04x}",
+            f"{elem.tag.element:04x}",
+            elem.description(),
+            elem.VR,
+            str(elem.value)
+        ])
 
     # Convert metadata to DataFrame
-    df = pd.DataFrame(list(metadata.items()), columns=['Tag', 'Value'])
+    df = pd.DataFrame(metadata, columns=['Group', 'Element', 'Description', 'VR', 'Value'])
     return df
 
 def display_metadata(dicom_file):
