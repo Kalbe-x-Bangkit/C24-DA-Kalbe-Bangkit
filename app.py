@@ -23,7 +23,7 @@ def calculate_l2rat(original_image, enhanced_image):
     l2norm_ratio = np.sum(original_image ** 2) / np.sum((original_image - enhanced_image) ** 2)
     return l2norm_ratio
 
-def process_image(original_image, enhancement_type, fix_monochrome=True):
+def process_image(original_image, enhancement_type, annotations, fix_monochrome=True):
     # Convert image to grayscale if desired
     if fix_monochrome:
         original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
