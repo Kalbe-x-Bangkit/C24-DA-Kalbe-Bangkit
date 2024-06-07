@@ -123,10 +123,10 @@ iface = gr.Interface(
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
         gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
-        gr.Slider(0, 100, step=1, label="Brightness Level", default=50),
-        gr.Slider(0, 100, step=1, label="Contrast Level", default=50),
-        gr.Slider(0, 2, step=0.1, label="Saturation Level", default=1.0),
-        gr.Slider(0, 10, step=0.1, label="Sharpness Level", default=1.0)
+        gr.Slider(0, 100, step=1, label="Brightness Level", value=50),
+        gr.Slider(0, 100, step=1, label="Contrast Level", value=50),
+        gr.Slider(0, 2, step=0.1, label="Saturation Level", value=1.0),
+        gr.Slider(0, 10, step=0.1, label="Sharpness Level", value=1.0)
     ],
     outputs=[
         gr.Image(type="numpy", label="Enhanced Image"),
