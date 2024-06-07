@@ -80,11 +80,26 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
+# Image annotation function
+def annotate_image(image, annotations):
+    for annotation in annotations:
+        label, x, y, width, height = annotation['label'], annotation['x'], annotation['y'], annotation['width'], annotation['height']
+        start_point = (int(x * image.shape[1]), int(y * image.shape[0]))
+        end_point = (int((x + width) * image.shape[1]), int((y + height) * image.shape[0]))
+        color = (0, 255, 0)
+        thickness = 2
+        image = cv2.rectangle(image, start_point, end_point, color, thickness)
+        image = cv2.putText(image, label, start_point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+    return image
+
+
+
 iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
         gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type")
+        gr.AnnotatedImage(label="Annotations", tool="rectangle")
     ],
     outputs=[
         gr.Image(type="numpy", label="Enhanced Image"),
