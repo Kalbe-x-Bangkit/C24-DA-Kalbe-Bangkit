@@ -37,7 +37,7 @@ def process_image(original_image, enhancement_type, annotations, fix_monochrome=
     enhanced_image = enhance_image(image, enhancement_type)
 
     # Annotate the original image
-    annotated_image = annotate_image(original_image, annotations)
+    # annotated_image = annotate_image(original_image, annotations)
     
     # Calculate image quality metrics
     mse = calculate_mse(original_image, enhanced_image)
@@ -45,7 +45,7 @@ def process_image(original_image, enhancement_type, annotations, fix_monochrome=
     maxerr = calculate_maxerr(original_image, enhanced_image)
     l2rat = calculate_l2rat(original_image, enhanced_image)
     
-    return enhanced_image, annotated_image, mse, psnr, maxerr, l2rat
+    return enhanced_image, mse, psnr, maxerr, l2rat
 
 def apply_clahe(image):
     clahe = cv2.createCLAHE(clipLimit=40.0, tileGridSize=(10, 10))
@@ -84,27 +84,27 @@ def enhance_image(image, enhancement_type):
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
 # Image annotation function
-def annotate_image(image, annotations):
-    for annotation in annotations:
-        label, x, y, width, height = annotation['label'], annotation['x'], annotation['y'], annotation['width'], annotation['height']
-        start_point = (int(x * image.shape[1]), int(y * image.shape[0]))
-        end_point = (int((x + width) * image.shape[1]), int((y + height) * image.shape[0]))
-        color = (0, 255, 0)
-        thickness = 2
-        image = cv2.rectangle(image, start_point, end_point, color, thickness)
-        image = cv2.putText(image, label, start_point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
-    return image
+# def annotate_image(image, annotations):
+#     for annotation in annotations:
+#         label, x, y, width, height = annotation['label'], annotation['x'], annotation['y'], annotation['width'], annotation['height']
+#         start_point = (int(x * image.shape[1]), int(y * image.shape[0]))
+#         end_point = (int((x + width) * image.shape[1]), int((y + height) * image.shape[0]))
+#         color = (0, 255, 0)
+#         thickness = 2
+#         image = cv2.rectangle(image, start_point, end_point, color, thickness)
+#         image = cv2.putText(image, label, start_point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+#     return image
 
 iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
         gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
-        gr.AnnotatedImage(label="Annotations")
+        # gr.AnnotatedImage(label="Annotations")
     ],
     outputs=[
         gr.Image(type="numpy", label="Enhanced Image"),
-        gr.Image(type="numpy", label="Annotated Original Image"),
+        # gr.Image(type="numpy", label="Annotated Original Image"),
         gr.Textbox(label="MSE"),
         gr.Textbox(label="PSNR"),
         gr.Textbox(label="Maxerr"),
