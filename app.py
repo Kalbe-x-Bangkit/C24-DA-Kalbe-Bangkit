@@ -2,8 +2,6 @@ import cv2
 import gradio as gr
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
-import io
 
 def calculate_mse(original_image, enhanced_image):
     mse = np.mean((original_image - enhanced_image) ** 2)
@@ -82,19 +80,6 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
-def save_image(image):
-    # Convert numpy array image to PIL Image
-    pil_image = Image.fromarray(image)
-    
-    # Save the image to a BytesIO object
-    img_byte_array = io.BytesIO()
-    pil_image.save(img_byte_array, format='PNG')
-    
-    # Reset the stream position to the beginning
-    img_byte_array.seek(0)
-    
-    return img_byte_array
-
 iface = gr.Interface(
     fn=process_image,
     inputs=[
@@ -106,8 +91,7 @@ iface = gr.Interface(
         gr.Textbox(label="MSE"),
         gr.Textbox(label="PSNR"),
         gr.Textbox(label="Maxerr"),
-        gr.Textbox(label="L2Rat"),
-        gr.Button("Save Image")
+        gr.Textbox(label="L2Rat")
     ],
     title="Image Enhancement and Quality Evaluation"
 )
