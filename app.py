@@ -1,10 +1,7 @@
 import cv2
 import gradio as gr
 import numpy as np
-import pydicom
-import pandas as pd
-
-### ENHANCEMENT CODE
+import matplotlib.pyplot as plt
 
 def calculate_mse(original_image, enhanced_image):
     mse = np.mean((original_image - enhanced_image) ** 2)
@@ -26,41 +23,7 @@ def calculate_l2rat(original_image, enhanced_image):
     l2norm_ratio = np.sum(original_image ** 2) / np.sum((original_image - enhanced_image) ** 2)
     return l2norm_ratio
 
-def adjust_brightness_contrast(image, brightness=0, contrast=0):
-    brightness = int((brightness - 50) * 2.55)
-    contrast = int((contrast - 50) * 2.55)
-    
-    if brightness != 0:
-        if brightness > 0:
-            shadow = brightness
-            highlight = 255
-        else:
-            shadow = 0
-            highlight = 255 + brightness
-        alpha_b = (highlight - shadow) / 255
-        gamma_b = shadow
-        image = cv2.addWeighted(image, alpha_b, image, 0, gamma_b)
-
-    if contrast != 0:
-        f = 131 * (contrast + 127) / (127 * (131 - contrast))
-        alpha_c = f
-        gamma_c = 127 * (1 - f)
-        image = cv2.addWeighted(image, alpha_c, image, 0, gamma_c)
-
-    return image
-
-def adjust_saturation(image, saturation=1.0):
-    if len(image.shape) == 2 or image.shape[2] == 1:
-        return image
-    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1] * saturation, 0, 255)
-    return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
-
-def adjust_sharpness(image, sharpness=1.0):
-    kernel = np.array([[-1, -1, -1], [-1, 9 * sharpness, -1], [-1, -1, -1]])
-    return cv2.filter2D(image, -1, kernel)
-
-def process_image(original_image, enhancement_type, brightness, contrast, saturation, sharpness, fix_monochrome=True):
+def process_image(original_image, enhancement_type, fix_monochrome=True):
     # Convert image to grayscale if desired
     if fix_monochrome:
         original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
@@ -72,11 +35,6 @@ def process_image(original_image, enhancement_type, brightness, contrast, satura
     
     # Enhance the image based on selection
     enhanced_image = enhance_image(image, enhancement_type)
-    
-    # Adjust brightness, contrast, saturation, and sharpness
-    enhanced_image = adjust_brightness_contrast(enhanced_image, brightness, contrast)
-    enhanced_image = adjust_saturation(enhanced_image, saturation)
-    enhanced_image = adjust_sharpness(enhanced_image, sharpness)
     
     # Calculate image quality metrics
     mse = calculate_mse(original_image, enhanced_image)
@@ -122,36 +80,11 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
-### DICOM TO CSV EXTRACTOR
-def extract_dicom_metadata(dicom_file):
-    """Extract metadata from a DICOM file and return as a DataFrame."""
-    ds = pydicom.dcmread(dicom_file.name)
-    metadata = {elem.keyword: elem.value for elem in ds if elem.keyword}
-
-    # Convert metadata to DataFrame
-    df = pd.DataFrame(list(metadata.items()), columns=['Tag', 'Value'])
-    return df
-
-    # Convert metadata to DataFrame
-    df = pd.DataFrame(metadata, columns=['Group', 'Element', 'Description', 'VR', 'Value'])
-    return df
-
-def display_metadata(dicom_file):
-    """Display DICOM metadata as a table."""
-    metadata_df = extract_dicom_metadata(dicom_file)
-    return metadata_df
-
-
-
-iface1 = gr.Interface(
+iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
-        gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
-        gr.Slider(0, 100, step=1, label="Brightness Level", value=50),
-        gr.Slider(0, 100, step=1, label="Contrast Level", value=50),
-        gr.Slider(0, 2, step=0.1, label="Saturation Level", value=1.0),
-        gr.Slider(0, 10, step=0.1, label="Sharpness Level", value=1.0)
+        gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type")
     ],
     outputs=[
         gr.Image(type="numpy", label="Enhanced Image"),
@@ -162,15 +95,5 @@ iface1 = gr.Interface(
     ],
     title="Image Enhancement and Quality Evaluation"
 )
-
-iface2 = gr.Interface(
-    fn=display_metadata,
-    inputs=gr.File(label="Upload DICOM File"),
-    outputs=gr.Dataframe(label="DICOM Metadata"),
-    title="DICOM Metadata Extractor",
-    description="Upload a DICOM file to extract and view its metadata."
-)
-
-iface = gr.TabbedInterface([iface1, iface2], ["Image Enhancement", "DICOM Metadata"])
 
 iface.launch()
