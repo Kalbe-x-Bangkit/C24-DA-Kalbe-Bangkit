@@ -2,6 +2,8 @@ import cv2
 import gradio as gr
 import numpy as np
 
+### ENHANCEMENT CODE
+
 def calculate_mse(original_image, enhanced_image):
     mse = np.mean((original_image - enhanced_image) ** 2)
     return mse
@@ -118,6 +120,23 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
+### DICOM TO CSV EXTRACTOR
+def extract_dicom_metadata(dicom_file):
+    """Extract metadata from a DICOM file and return as a DataFrame."""
+    ds = pydicom.dcmread(dicom_file.name)
+    metadata = {elem.keyword: elem.value for elem in ds if elem.keyword}
+
+    # Convert metadata to DataFrame
+    df = pd.DataFrame(list(metadata.items()), columns=['Tag', 'Value'])
+    return df
+
+def display_metadata(dicom_file):
+    """Display DICOM metadata as a table."""
+    metadata_df = extract_dicom_metadata(dicom_file)
+    return metadata_df
+
+
+
 iface = gr.Interface(
     fn=process_image,
     inputs=[
@@ -137,5 +156,15 @@ iface = gr.Interface(
     ],
     title="Image Enhancement and Quality Evaluation"
 )
+
+iface2 = gr.Interface(
+    fn=display_metadata,
+    inputs=gr.inputs.File(file_count="single", label="Upload DICOM File"),
+    outputs=gr.outputs.Dataframe(label="DICOM Metadata"),
+    title="DICOM Metadata Extractor",
+    description="Upload a DICOM file to extract and view its metadata."
+)
+
+iface = gr.TabbedInterface([iface1, iface2], ["Image Enhancement", "DICOM Metadata"])
 
 iface.launch()
