@@ -101,7 +101,7 @@ iface = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
-        gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type")
+        gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
         gr.AnnotatedImage(label="Annotations", tool="rectangle")
     ],
     outputs=[
