@@ -1,6 +1,7 @@
 import cv2
 import gradio as gr
 import numpy as np
+import matplotlib.pyplot as plt
 from PIL import Image
 import io
 
@@ -82,11 +83,17 @@ def enhance_image(image, enhancement_type):
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
 def save_image(image):
-    img = Image.fromarray(image)
-    byte_io = io.BytesIO()
-    img.save(byte_io, format='PNG')
-    byte_io.seek(0)
-    return byte_io
+    # Convert numpy array image to PIL Image
+    pil_image = Image.fromarray(image)
+    
+    # Save the image to a BytesIO object
+    img_byte_array = io.BytesIO()
+    pil_image.save(img_byte_array, format='PNG')
+    
+    # Reset the stream position to the beginning
+    img_byte_array.seek(0)
+    
+    return img_byte_array
 
 iface = gr.Interface(
     fn=process_image,
