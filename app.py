@@ -137,7 +137,7 @@ def display_metadata(dicom_file):
 
 
 
-iface = gr.Interface(
+iface1 = gr.Interface(
     fn=process_image,
     inputs=[
         gr.Image(type="numpy", label="Upload Original Image"),
@@ -161,6 +161,14 @@ iface2 = gr.Interface(
     fn=display_metadata,
     inputs=gr.inputs.File(file_count="single", label="Upload DICOM File"),
     outputs=gr.outputs.Dataframe(label="DICOM Metadata"),
+    title="DICOM Metadata Extractor",
+    description="Upload a DICOM file to extract and view its metadata."
+)
+
+iface2 = gr.Interface(
+    fn=display_metadata,
+    inputs=gr.File(label="Upload DICOM File"),
+    outputs=gr.Dataframe(label="DICOM Metadata"),
     title="DICOM Metadata Extractor",
     description="Upload a DICOM file to extract and view its metadata."
 )
