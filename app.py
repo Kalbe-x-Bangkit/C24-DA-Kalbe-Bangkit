@@ -188,8 +188,8 @@ iface_gradcam = gr.Interface(
         gr.Image(type="numpy", label="Upload Image for Grad-CAM"),
         gr.Dataframe(label="Dataframe for Mean/Std Calculation"),
         gr.Textbox(label="Labels", lines=5, placeholder="Enter labels separated by commas"),
-        gr.Textbox(label="Model Path", default='model/densenet.hdf5'),
-        gr.Textbox(label="Pretrained Model Path", default='model/pretrained_model.h5')
+        gr.Textbox(label="Model Path", value='model/densenet.hdf5'),
+        gr.Textbox(label="Pretrained Model Path", value='model/pretrained_model.h5')
     ],
     outputs=[
         gr.Image(label="Grad-CAM 1"),
