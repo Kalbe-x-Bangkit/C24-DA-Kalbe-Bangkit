@@ -48,7 +48,7 @@ def process_image(original_image, enhancement_type, fix_monochrome=True):
     return enhanced_image, mse, psnr, maxerr, l2rat
 
 def apply_clahe(image):
-    clahe = cv2.createCLAHE(clipLimit=40.0, tileGridSize=(10, 10))
+    clahe = cv2.createCLAHE(clipLimit=40.0, tileGridSize=(8, 8))
     return clahe.apply(image)
 
 def invert(image):
