@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "da-kalbe",
+  "private_key_id": "63ee33c9cdbb52d73de5ec6a70bcdaff2cd1f0c7",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDAM43NzySSZuVV\nfD4Csno9tUtCuG40A6ZGBmr/5D8e5X4Sjm2Zvdmt5KC16eIqVRoD4Tmk9vSY2VWB\njUjOU3Atx0GLab1ixM091b1NhdqTpPYMgFOkGPYKoOnPpGhy33rRNNhDmuZVM96y\nHklJSWtaapAMa3VJdXacwY9o2ZKYYs/QoG3y5Mls2LQtuFGya14C9e30b8E7+Tpm\nwsfn1Ek6SU8ICJDQJKvMN2+wyfDvav0XKRUGXX2gRUtPt2mIVc3cIx4TB9QoWPAS\nZ4yzPjdL4CuCrOiz0HrQTJseHSjMiCV1b5D17vAejqn/UU6apkebLjilsduAkpd8\nUUWIgGQRAgMBAAECggEACTwg5t/k/l97yu2h5CAeZVXPPy4x5gVmiUGjMAGP8oSC\ngtKS8RARGWdyvQg3F04d+8w9UxAQ72wtN9Y+8TegnE574ik15zzqA1ErBpfKdA15\nILTPcAMer/g3K8SBm+1heb5b2sm391A7Sxx57Hp0MkoMUFB0eE+wyouMAAoeM/yh\ndb6jVkiJZUWiHr6Bu3VRD8tPL17vJ4l8VCFKaoFAIuqLWqqgp1Uql1BPOjPGNg/U\no82rjEVhQURsv0NKUtpkOhm71Zi+1oBNCiaDHnq6ppA6XwSxAGJyYmC7TC9PQgp8\n2L6yZQICkqYUo2XvnhWqMcKe4v6sT7EVLYsWbAuTnQKBgQDe6u5Q7qCuaPL/8Ib3\nRVVFR3ebPt4VSsixQYkQ5LEwbUYgTpHEEOua7XdTxh6tjrk33RxTsaIfMDx95SQP\nu1R1XqRGk0q5qXqzWMUu92ghgUBQGDnCuAvcu2xznCL2s3rcivZX5pJ/a4hV9Wh8\n08uZ11zz3ybkO5ow70Hf3UbqTQKBgQDcuabHejnSAwVfHdzMdLX12Ly9vJku0ElV\n8E+rF3Yof4Hj6BVDijKPvmUskzL/NZN6NIDObLo3DqU0ZE5LeVUTbap6FookUcAG\nZSJvieQgIhjhhumZAAiZ7Cm/mjV64NkunFfB6/huO+JFCn4ph4AR7FGcxWLhqzKG\ni4VgahI61QKBgFHBkA4Wts/Apf7AVH+z6gYyo+dIM2NTvi9kfcS4W1QLf8CxkDx8\niCyWE0GiU/YLdlrKuWzopTETG9yAga1TYzJ4t3863hkh02KbmBYVnxdKtC+r8uM7\nZP5brvbnuNsKEHF6dcbfRbN92M7N5riBZRbTKcA3g6gJRA/WcC6OlUexAoGBAMC7\nFubtUdmQK7uPLsIUUuI1ezDNopAe7TouGNKTLOhV1gw0FYUhAd9D58IRUiFIHdtC\nRwp4I+15S0XBJCCA9Il/Y7ExRzRJcbvjyTrNk7V/MGyUyhp/zgLhFN8p/vKprNon\nR/WbXxSaE4wnilwm5exAhk62iA3216pl33N9iyd1AoGBAMmBGCDr0GfKlXFB0r0Q\nO0WSxwGIftbYC8peDJNIEkI/LvMd0GtOKccf8d3sVpX1+IelmOjc5b0vHqdRwj+s\nEMbngVXtdpQYmnoNqJNQIYT88m+7LMUQpIbANG5VeT1cbeMp/UdY6PjHStdMcvjb\nwQ7/93dz/GqQUjovtMEww8Py\n-----END PRIVATE KEY-----\n",
+  "client_email": "ml-model@da-kalbe.iam.gserviceaccount.com",
+  "client_id": "103965486441709077075",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/ml-model%40da-kalbe.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
