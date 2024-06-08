@@ -1,9 +1,10 @@
+import streamlit as st
 import cv2
-import gradio as gr
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.models import load_model
+import pandas as pd
 
 class GradCAM:
     def __init__(self, model, layer_name):
@@ -86,13 +87,6 @@ def compute_gradcam(img, model, df, labels, layer_name='bn'):
 
     return gradcam_images
 
-def gradio_interface_gradcam(img, df, labels, model_path, pretrained_model_path, layer_name='bn'):
-    model = load_model(model_path)
-    pretrained_model = load_model(pretrained_model_path)
-    labels = labels.split(',')
-    gradcam_images = compute_gradcam(img, pretrained_model, df, labels, layer_name)
-    return [gr.Image.update(value=image, label=label) for image, label in gradcam_images]
-
 def calculate_mse(original_image, enhanced_image):
     mse = np.mean((original_image - enhanced_image) ** 2)
     return mse
@@ -114,7 +108,7 @@ def calculate_l2rat(original_image, enhanced_image):
     return l2norm_ratio
 
 def process_image(original_image, enhancement_type, fix_monochrome=True):
-    if fix_monochrome:
+    if fix_monochrome and original_image.shape[-1] == 3:
         original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
 
     image = original_image - np.min(original_image)
@@ -166,40 +160,38 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
-iface = gr.Interface(
-    fn=process_image,
-    inputs=[
-        gr.Image(type="numpy", label="Upload Original Image"),
-        gr.Radio(choices=["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"], label="Enhancement Type"),
-    ],
-    outputs=[
-        gr.Image(type="numpy", label="Enhanced Image"),
-        gr.Textbox(label="MSE"),
-        gr.Textbox(label="PSNR"),
-        gr.Textbox(label="Maxerr"),
-        gr.Textbox(label="L2Rat")
-    ],
-    title="Image Enhancement and Quality Evaluation"
-)
+st.title("Image Enhancement and Quality Evaluation")
 
-iface_gradcam = gr.Interface(
-    fn=gradio_interface_gradcam,
-    inputs=[
-        gr.Image(type="numpy", label="Upload Image for Grad-CAM"),
-        gr.Dataframe(label="Dataframe for Mean/Std Calculation"),
-        gr.Textbox(label="Labels", lines=5, placeholder="Enter labels separated by commas"),
-        gr.Textbox(label="Model Path", value='model/densenet.hdf5'),
-        gr.Textbox(label="Pretrained Model Path", value='model/pretrained_model.h5')
-    ],
-    outputs=[
-        gr.Image(label="Grad-CAM 1"),
-        gr.Image(label="Grad-CAM 2"),
-        gr.Image(label="Grad-CAM 3")
-    ],
-    title="Grad-CAM Visualization"
-)
+uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
+enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
-iface_combined = gr.TabbedInterface([iface, iface_gradcam], ["Image Enhancement and Quality Evaluation", "Grad-CAM Visualization"])
+if uploaded_file is not None:
+    original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
+    enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
 
-if __name__ == "__main__":
-    iface_combined.launch()
+    st.image(original_image, caption='Original Image', use_column_width=True)
+    st.image(enhanced_image, caption='Enhanced Image', use_column_width=True)
+
+    st.write("MSE:", mse)
+    st.write("PSNR:", psnr)
+    st.write("Maxerr:", maxerr)
+    st.write("L2Rat:", l2rat)
+
+st.title("Grad-CAM Visualization")
+
+uploaded_gradcam_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
+if uploaded_gradcam_file is not None:
+    df_file = st.file_uploader("Upload DataFrame for Mean/Std Calculation", type=["csv"])
+    labels = st.text_area("Labels", placeholder="Enter labels separated by commas")
+    model_path = st.text_input("Model Path", 'model/densenet.hdf5')
+    pretrained_model_path = st.text_input("Pretrained Model Path", 'model/pretrained_model.h5')
+
+    if df_file and labels and model_path and pretrained_model_path:
+        df = pd.read_csv(df_file)
+        labels = labels.split(',')
+        model = load_model(model_path)
+        pretrained_model = load_model(pretrained_model_path)
+        gradcam_images = compute_gradcam(uploaded_gradcam_file, pretrained_model, df, labels)
+
+        for idx, (gradcam_image, label) in enumerate(gradcam_images):
+            st.image(gradcam_image, caption=f'Grad-CAM {idx+1}: {label}', use_column_width=True)
