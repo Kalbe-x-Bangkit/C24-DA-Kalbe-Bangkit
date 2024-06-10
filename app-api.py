@@ -7,20 +7,46 @@ from tensorflow.keras.models import load_model
 import pandas as pd
 from google.cloud import storage
 import os
+import io
+import base64
+from flask import Flask, request, jsonify, render_template
+from PIL import Image
+import uuid
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request
+from starlette.responses import RedirectResponse  # For redirection
+import uvicorn
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] ="./da-kalbe-63ee33c9cdbb.json"
+bucket_name = "da-kalbe-ml-result-png"
+storage_client = storage.Client()
+bucket = storage_client.bucket(bucket_name)
 
 # Function to upload file to Google Cloud Storage
-def upload_to_gcs(bucket_name, source_file_name, destination_blob_name):
-    """Uploads a file to the bucket."""
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(destination_blob_name)
+def upload_to_gcs(image: Image, filename: str):
+    """Uploads an image to Google Cloud Storage."""
+    try:
+        blob = bucket.blob(filename)
+        image_buffer = io.BytesIO()
+        image.save(image_buffer, format='PNG')
+        image_buffer.seek(0)
+        blob.upload_from_file(image_buffer, content_type='image/png')
+        st.write("File ready to be seen in OHIF Viewer.")
+    except GoogleCloudError as gce:
+        st.error(f"Error uploading to Google Cloud Storage: {gce}")
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}") 
+    
+def upload_folder_images(image, enhanced_image):
+    # Create unique folder name
+    folder_name = str(uuid.uuid4())
 
-    blob.upload_from_filename(source_file_name)
+    # Create the folder in Cloud Storage
+    bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
 
-    # st.write(f"File {source_file_name} uploaded to {destination_blob_name}.")
-    st.write(f"File ready to be seen in OHIF Viewer.")
+    upload_to_gcs(image, folder_name + '/' + 'original_image')
+    upload_to_gcs(enhanced_image, folder_name + '/' + enhancement_type)
 
 class GradCAM:
     def __init__(self, model, layer_name):
@@ -60,9 +86,9 @@ def apply_heatmap(img, heatmap, heatmap_ratio=0.6):
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     return np.uint8(heatmap * heatmap_ratio + img * (1 - heatmap_ratio))
 
-def load_image(img_path, df, preprocess=True, H=320, W=320):
-    mean, std = get_mean_std_per_batch(img_path, df, H=H, W=W)
-    x = image.load_img(img_path, target_size=(H, W))
+def load_image(img_path, df, preprocess=True, height=320, width=320):
+    mean, std = get_mean_std_per_batch(img_path, df, height, width)
+    x = image.load_img(img_path, target_size=(height, width))
     x = image.img_to_array(x)
     if preprocess:
         x -= mean
@@ -70,11 +96,11 @@ def load_image(img_path, df, preprocess=True, H=320, W=320):
         x = np.expand_dims(x, axis=0)
     return x
 
-def get_mean_std_per_batch(image_path, df, H=320, W=320):
+def get_mean_std_per_batch(image_path, df, height=320, width=320):
     sample_data = []
     for idx, img in enumerate(df.sample(100)["Image Index"].values):
         sample_data.append(
-            np.array(image.load_img(image_path, target_size=(H, W))))
+            np.array(image.load_img(image_path, target_size=(height, width))))
     mean = np.mean(sample_data[0])
     std = np.std(sample_data[0])
     return mean, std
@@ -197,18 +223,11 @@ if uploaded_file is not None:
     enhanced_image_path = "enhanced_image.png"
     cv2.imwrite(enhanced_image_path, enhanced_image)
 
-     # Save original image to a file
+    # Save original image to a file
     original_image_path = "original_image.png"
     cv2.imwrite(original_image_path, original_image)
-
-    # Upload the original image to Google Cloud Storage
-    bucket_name = "da-kalbe-ml-result-png"
-    original_destination_blob_name = f"{uploaded_file.name}/original"
-    upload_to_gcs(bucket_name, original_image_path, original_destination_blob_name)
-
-    # Upload the enhanced image to Google Cloud Storage
-    destination_blob_name = f"{uploaded_file.name}/enhanced"
-    upload_to_gcs(bucket_name, enhanced_image_path, destination_blob_name)
+    
+    upload_folder_images(original_image_path, enhanced_image_path)
 
 st.title("Grad-CAM Visualization")
 
@@ -231,7 +250,61 @@ if uploaded_gradcam_file is not None:
             # Save gradcam image to a file
             gradcam_image_path = f"gradcam_image_{idx+1}.png"
             cv2.imwrite(gradcam_image_path, gradcam_image)
+            # Create unique folder name
+            folder_name = str(uuid.uuid4())
 
+            # Create the folder in Cloud Storage
+            bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
+            
             # Upload the gradcam image to Google Cloud Storage
             destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
-            upload_to_gcs(bucket_name, gradcam_image_path, destination_blob_name)
+            upload_to_gcs(gradcam_image_path, destination_blob_name)
+            
+# --- FastAPI Configuration ---
+app = FastAPI()
+
+@app.post("/process_image")
+async def process_image_api(image: UploadFile = File(...), enhancement_type: str = Form(...)):
+    """Processes an uploaded image and returns the enhanced image and metrics."""
+    
+    if not image:
+        return JSONResponse(status_code=400, content={'error': 'No image file provided'})
+
+    allowed_extensions = {'png', 'jpg', 'jpeg'}
+    if '.' not in image.filename or image.filename.split('.')[-1].lower() not in allowed_extensions:
+        return JSONResponse(status_code=400, content={'error': 'Invalid image file'})
+
+    try:
+        # Open the image using Pillow
+        image_pil = Image.open(image.file).convert('RGB') 
+
+        # Convert to NumPy array
+        image_np = np.array(image_pil)
+
+        # Apply image processing
+        enhanced_image, mse, psnr, maxerr, l2rat = process_image(image_np, enhancement_type)
+
+        # Convert processed image back to PIL format for saving
+        enhanced_image_pil = Image.fromarray(enhanced_image)
+
+        # Save to in-memory buffer
+        image_buffer = io.BytesIO()
+        enhanced_image_pil.save(image_buffer, format='PNG') 
+        image_buffer.seek(0)
+
+        # Encode to base64
+        image_base64 = base64.b64encode(image_buffer.getvalue()).decode('utf-8')
+
+        response = {
+            'message': 'Image processed successfully!',
+            'processed_image': image_base64,
+            'se': float(mse), 
+            'psnr': float(psnr), 
+            'axerr': float(maxerr),  
+            'l2rat': float(l2rat)   
+        }   
+        upload_folder_images(image, enhanced_image_pil)
+        return JSONResponse(status_code=200, content=response)
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={'error': f'Error processing image: {str(e)}'})
