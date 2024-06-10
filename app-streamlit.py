@@ -296,7 +296,7 @@ if uploaded_gradcam_file is not None:
             gradcam_image_path = f"gradcam_image_{idx+1}.png"
             cv2.imwrite(gradcam_image_path, gradcam_image)
             # Create unique folder name
-            folder_name = str(uuid.uuid4())
+            folder_name = f"{uploaded_file.name}"
 
             # Create the folder in Cloud Storage
             bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
