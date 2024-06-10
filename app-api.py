@@ -9,14 +9,17 @@ from google.cloud import storage
 import os
 import io
 import base64
-from flask import Flask, request, jsonify, render_template
 from PIL import Image
 import uuid
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
-from starlette.responses import RedirectResponse  # For redirection
+from starlette.responses import RedirectResponse 
+import threading
 import uvicorn
+from fastapi.middleware.cors import CORSMiddleware
+import time
+import socket
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] ="./da-kalbe-63ee33c9cdbb.json"
 bucket_name = "da-kalbe-ml-result-png"
@@ -201,72 +204,80 @@ def enhance_image(image, enhancement_type):
         return apply_clahe(image)
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
-
-st.title("Image Enhancement and Quality Evaluation")
-
-uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
-enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
-
-if uploaded_file is not None:
-    original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
-    enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
-
-    st.image(original_image, caption='Original Image', use_column_width=True)
-    st.image(enhanced_image, caption='Enhanced Image', use_column_width=True)
-
-    st.write("MSE:", mse)
-    st.write("PSNR:", psnr)
-    st.write("Maxerr:", maxerr)
-    st.write("L2Rat:", l2rat)
-
-    # Save enhanced image to a file
-    enhanced_image_path = "enhanced_image.png"
-    cv2.imwrite(enhanced_image_path, enhanced_image)
-
-    # Save original image to a file
-    original_image_path = "original_image.png"
-    cv2.imwrite(original_image_path, original_image)
     
-    upload_folder_images(original_image_path, enhanced_image_path)
+def run_streamlit():
+    st.title("Image Enhancement and Quality Evaluation")
 
-st.title("Grad-CAM Visualization")
+    uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
+    enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
-uploaded_gradcam_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
-if uploaded_gradcam_file is not None:
-    df_file = st.file_uploader("Upload DataFrame for Mean/Std Calculation", type=["csv"])
-    labels = st.text_area("Labels", placeholder="Enter labels separated by commas")
-    model_path = st.text_input("Model Path", 'model/densenet.hdf5')
-    pretrained_model_path = st.text_input("Pretrained Model Path", 'model/pretrained_model.h5')
+    if uploaded_file is not None:
+        original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
+        enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
 
-    if df_file and labels and model_path and pretrained_model_path:
-        df = pd.read_csv(df_file)
-        labels = labels.split(',')
-        model = load_model(model_path)
-        pretrained_model = load_model(pretrained_model_path)
-        gradcam_images = compute_gradcam(uploaded_gradcam_file, pretrained_model, df, labels)
+        st.image(original_image, caption='Original Image', use_column_width=True)
+        st.image(enhanced_image, caption='Enhanced Image', use_column_width=True)
 
-        for idx, (gradcam_image, label) in enumerate(gradcam_images):
-            st.image(gradcam_image, caption=f'Grad-CAM {idx+1}: {label}', use_column_width=True)
-            # Save gradcam image to a file
-            gradcam_image_path = f"gradcam_image_{idx+1}.png"
-            cv2.imwrite(gradcam_image_path, gradcam_image)
-            # Create unique folder name
-            folder_name = str(uuid.uuid4())
+        st.write("MSE:", mse)
+        st.write("PSNR:", psnr)
+        st.write("Maxerr:", maxerr)
+        st.write("L2Rat:", l2rat)
 
-            # Create the folder in Cloud Storage
-            bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-            
-            # Upload the gradcam image to Google Cloud Storage
-            destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
-            upload_to_gcs(gradcam_image_path, destination_blob_name)
-            
-# --- FastAPI Configuration ---
-app = FastAPI()
+        # Save enhanced image to a file
+        enhanced_image_path = "enhanced_image.png"
+        cv2.imwrite(enhanced_image_path, enhanced_image)
 
-@app.post("/process_image")
+        # Save original image to a file
+        original_image_path = "original_image.png"
+        cv2.imwrite(original_image_path, original_image)
+        
+        upload_folder_images(original_image_path, enhanced_image_path)
+
+    st.title("Grad-CAM Visualization")
+
+    uploaded_gradcam_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
+    if uploaded_gradcam_file is not None:
+        df_file = st.file_uploader("Upload DataFrame for Mean/Std Calculation", type=["csv"])
+        labels = st.text_area("Labels", placeholder="Enter labels separated by commas")
+        model_path = st.text_input("Model Path", 'model/densenet.hdf5')
+        pretrained_model_path = st.text_input("Pretrained Model Path", 'model/pretrained_model.h5')
+
+        if df_file and labels and model_path and pretrained_model_path:
+            df = pd.read_csv(df_file)
+            labels = labels.split(',')
+            model = load_model(model_path)
+            pretrained_model = load_model(pretrained_model_path)
+            gradcam_images = compute_gradcam(uploaded_gradcam_file, pretrained_model, df, labels)
+
+            for idx, (gradcam_image, label) in enumerate(gradcam_images):
+                st.image(gradcam_image, caption=f'Grad-CAM {idx+1}: {label}', use_column_width=True)
+                # Save gradcam image to a file
+                gradcam_image_path = f"gradcam_image_{idx+1}.png"
+                cv2.imwrite(gradcam_image_path, gradcam_image)
+                # Create unique folder name
+                folder_name = str(uuid.uuid4())
+
+                # Create the folder in Cloud Storage
+                bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
+                
+                # Upload the gradcam image to Google Cloud Storage
+                destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
+                upload_to_gcs(gradcam_image_path, destination_blob_name)
+
+# FastAPI setup
+api_app = FastAPI()
+
+# Add CORS middleware to allow Streamlit to make requests to FastAPI
+api_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this to the specific origins you need
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@api_app.post("/process_image")
 async def process_image_api(image: UploadFile = File(...), enhancement_type: str = Form(...)):
-    """Processes an uploaded image and returns the enhanced image and metrics."""
-    
     if not image:
         return JSONResponse(status_code=400, content={'error': 'No image file provided'})
 
@@ -275,36 +286,50 @@ async def process_image_api(image: UploadFile = File(...), enhancement_type: str
         return JSONResponse(status_code=400, content={'error': 'Invalid image file'})
 
     try:
-        # Open the image using Pillow
-        image_pil = Image.open(image.file).convert('RGB') 
-
-        # Convert to NumPy array
+        image_pil = Image.open(image.file).convert('RGB')
         image_np = np.array(image_pil)
-
-        # Apply image processing
         enhanced_image, mse, psnr, maxerr, l2rat = process_image(image_np, enhancement_type)
-
-        # Convert processed image back to PIL format for saving
         enhanced_image_pil = Image.fromarray(enhanced_image)
 
-        # Save to in-memory buffer
         image_buffer = io.BytesIO()
-        enhanced_image_pil.save(image_buffer, format='PNG') 
+        enhanced_image_pil.save(image_buffer, format='PNG')
         image_buffer.seek(0)
 
-        # Encode to base64
         image_base64 = base64.b64encode(image_buffer.getvalue()).decode('utf-8')
-
         response = {
             'message': 'Image processed successfully!',
             'processed_image': image_base64,
-            'se': float(mse), 
-            'psnr': float(psnr), 
-            'axerr': float(maxerr),  
-            'l2rat': float(l2rat)   
-        }   
-        upload_folder_images(image, enhanced_image_pil)
-        return JSONResponse(status_code=200, content=response)
+            'mse': float(mse),
+            'psnr': float(psnr),
+            'maxerr': float(maxerr),
+            'l2rat': float(l2rat)
+        }
 
+        return JSONResponse(status_code=200, content=response)
     except Exception as e:
         return JSONResponse(status_code=500, content={'error': f'Error processing image: {str(e)}'})
+
+def find_available_port(start_port=8001, end_port=8100):
+    for port in range(start_port, end_port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('localhost', port)) != 0:
+                return port
+    raise RuntimeError("No available ports in the specified range")
+
+def run_fastapi():
+    try:
+        port = find_available_port(8001, 8100)
+        uvicorn.run(api_app, host="0.0.0.0", port=port)
+    except Exception as e:
+        st.error(f"Failed to start FastAPI: {str(e)}")
+    
+if __name__ == "__main__":
+    # Run FastAPI in a separate thread
+    fastapi_thread = threading.Thread(target=run_fastapi, daemon=True)
+    fastapi_thread.start()
+    
+    # Allow FastAPI to start
+    time.sleep(2)
+    
+    # Run Streamlit
+    os.system("streamlit run app-api.py")
