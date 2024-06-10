@@ -1,23 +1,15 @@
-# Use the official Python image as a base image
+# Use the official lightweight Python image.
+# https://hub.docker.com/_/python
 FROM python:3.9-slim
+EXPOSE 8080
 
-# Set the working directory
-WORKDIR /app
-
-# Copy the requirements file into the container
+# Install Python dependencies
 COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Install the required packages
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy local code to the container image
+WORKDIR /app
+COPY . ./
 
-# Copy the rest of the application code into the container
-COPY . .
-
-# Set the environment variable for Google Cloud credentials
-ENV GOOGLE_APPLICATION_CREDENTIALS="./da-kalbe-63ee33c9cdbb.json"
-
-# Expose the port the app runs on
-EXPOSE 8501 8001
-
-# Run the application
-CMD ["python", "app-api.py"]
+# Run the web service on container startup
+CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
