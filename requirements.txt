@@ -10,3 +10,6 @@ keras
 fastapi
 uvicorn
 pillow
+pandas
+google-cloud-storage
+starlette
