@@ -35,36 +35,55 @@ def png_to_dicom(image: Image, patient_name="Anonymous", patient_id="0000"):
     """Converts a PNG image to DICOM format."""
     # Create the metadata for the DICOM file
     file_meta = Dataset()
-    file_meta.MediaStorageSOPClassUID = pydicom.uid.generate_uid()
+    file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2" # CT Image Storage
     file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
     file_meta.ImplementationClassUID = pydicom.uid.generate_uid()
+    file_meta.ImplementationVersionName = "Python PyDICOM"
 
     # Create the FileDataset (a Dataset with file meta information)
     ds = FileDataset("converted_image.dcm", {}, file_meta=file_meta, preamble=b"\0" * 128)
     ds.PatientName = patient_name
-    ds.PatientID = patient_id
-    ds.Modality = "OT"  # Other
+    ds.PatientID = pydicom.uid.generate_uid()
+    ds.Modality = "CT"  # Other
     ds.ContentDate = str(datetime.today().date()).replace("-", "")
     ds.ContentTime = str(datetime.now().time()).replace(":", "").split(".")[0]
 
     # Convert the image to grayscale if it is not
-    if image.mode != "L":
-        image = image.convert("L")
+    if image.mode == "L":
+        np_image = np.array(image)
+        # Set the pixel data
+        ds.PixelData = np_image.tobytes()
+        ds.Rows, ds.Columns = np_image.shape
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = "MONOCHROME2"
+        ds.BitsAllocated = 8
+        ds.BitsStored = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PixelData = np_image.tobytes()
 
-    # Convert the image to a numpy array
-    np_image = np.array(image)
+    elif image.mode == 'RGBA':
+        np_image = np.array(image)
+        ds.Rows = image.height
+        ds.Columns = image.width
+        ds.PhotometricInterpretation = "RGB"
+        ds.SamplesPerPixel = 3
+        ds.BitsStored = 8
+        ds.BitsAllocated = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PixelData = np_image.tobytes()
 
-    # Set the pixel data
-    ds.PixelData = np_image.tobytes()
-    ds.Rows, ds.Columns = np_image.shape
-    ds.SamplesPerPixel = 1
-    ds.PhotometricInterpretation = "MONOCHROME2"
-    ds.BitsAllocated = 8
-    ds.BitsStored = 8
-    ds.HighBit = 7
-    ds.PixelRepresentation = 0
+    # Set the transfer syntax
+    # ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
 
     return ds
+
+def save_dicom_to_bytes(dicom):
+    dicom_bytes = io.BytesIO()
+    dicom.save_as(dicom_bytes)
+    dicom_bytes.seek(0)
+    return dicom_bytes
 
 def upload_folder_images(image_path, enhanced_image_path):
     # Extract the base name of the uploaded image without the extension
