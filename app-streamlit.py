@@ -22,7 +22,7 @@ storage_client = storage.Client()
 bucket = storage_client.bucket(bucket_name)
 
 # Utility Functions
-def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='image/png'):
+def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
     try:
         blob = bucket.blob(filename)
@@ -43,16 +43,13 @@ def png_to_dicom(image: Image, patient_name="Anonymous", patient_id="0000"):
     # Create the FileDataset (a Dataset with file meta information)
     ds = FileDataset("converted_image.dcm", {}, file_meta=file_meta, preamble=b"\0" * 128)
     ds.PatientName = patient_name
-    ds.PatientID = pydicom.uid.generate_uid()
+    ds.PatientID = patient_id
     ds.Modality = "CT"  # Other
     ds.ContentDate = str(datetime.today().date()).replace("-", "")
     ds.ContentTime = str(datetime.now().time()).replace(":", "").split(".")[0]
 
-    # Convert the image to grayscale if it is not
+    np_image = np.array(image)
     if image.mode == "L":
-        np_image = np.array(image)
-        # Set the pixel data
-        ds.PixelData = np_image.tobytes()
         ds.Rows, ds.Columns = np_image.shape
         ds.SamplesPerPixel = 1
         ds.PhotometricInterpretation = "MONOCHROME2"
@@ -61,9 +58,7 @@ def png_to_dicom(image: Image, patient_name="Anonymous", patient_id="0000"):
         ds.HighBit = 7
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
-
-    elif image.mode == 'RGBA':
-        np_image = np.array(image)
+    elif image.mode == "RGB":
         ds.Rows = image.height
         ds.Columns = image.width
         ds.PhotometricInterpretation = "RGB"
@@ -72,11 +67,13 @@ def png_to_dicom(image: Image, patient_name="Anonymous", patient_id="0000"):
         ds.BitsAllocated = 8
         ds.HighBit = 7
         ds.PixelRepresentation = 0
+        ds.PlanarConfiguration = 0
         ds.PixelData = np_image.tobytes()
+    else:
+        raise ValueError("Unsupported image mode")
 
     # Set the transfer syntax
-    # ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
-
+    ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
     return ds
 
 def save_dicom_to_bytes(dicom):
