@@ -22,6 +22,7 @@ storage_client = storage.Client()
 bucket_result = storage_client.bucket(bucket_name)
 bucket_name_load = "da-ml-models"
 bucket_load = storage_client.bucket(bucket_name_load)
+
 """
 
 OBJECT DETECTION
@@ -364,6 +365,12 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
+# Function to add a button to redirect to the URL
+def redirect_button(url):
+    button = st.button('Go to OHIF Viewer')
+    if button:
+        st.markdown(f'<meta http-equiv="refresh" content="0;url={url}" />', unsafe_allow_html=True)
+
 # Streamlit Interface
 st.title("Image Enhancement and Quality Evaluation")
 
@@ -391,6 +398,10 @@ if uploaded_file is not None:
     cv2.imwrite(original_image_path, original_image)
     
     upload_folder_images(original_image_path, enhanced_image_path)
+
+    # Add the redirect button
+    redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/")
+
 
 st.title("Grad-CAM Visualization")
 
