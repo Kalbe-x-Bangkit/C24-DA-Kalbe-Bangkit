@@ -190,13 +190,13 @@ def save_dicom_to_bytes(dicom):
 
 def upload_folder_images(original_image_path, enhanced_image_path):
     # Extract the base name of the uploaded image without the extension
-    folder_name = f"{uploaded_file.name}"
+    folder_name = os.path.splitext(uploaded_file.name)[0]
     # Create the folder in Cloud Storage
     bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-    
+    enhancement_name = enhancement_type.split('_')[-1]
     # Convert images to DICOM
     original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
-    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_type + ".dcm")
+    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm")
 
     # Convert DICOM to byte stream for uploading
     original_dicom_bytes = io.BytesIO()
@@ -208,7 +208,7 @@ def upload_folder_images(original_image_path, enhanced_image_path):
 
     # Upload images to GCS
     upload_to_gcs(original_dicom_bytes, folder_name + '/' + 'original_image.dcm', content_type='application/dicom')
-    upload_to_gcs(enhanced_dicom_bytes, folder_name + '/' + enhancement_type + '.dcm', content_type='application/dicom')
+    upload_to_gcs(enhanced_dicom_bytes, folder_name + '/' + enhancement_name + '.dcm', content_type='application/dicom')
 
 class GradCAM:
     def __init__(self, model, layer_name):
