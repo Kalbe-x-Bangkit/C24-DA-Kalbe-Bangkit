@@ -21,6 +21,75 @@ bucket_name = "da-kalbe-ml-result-png"
 storage_client = storage.Client()
 bucket = storage_client.bucket(bucket_name)
 
+"""
+
+OBJECT DETECTION
+
+"""
+
+# Model of Object Detection
+model = tf.keras.models.load_model('model.h5')
+
+# Preprocess Bounding Box
+def preprocess_image(image):
+    """ Preprocess the uploaded image for model prediction. """
+    image = cv2.resize(image, (W, H))
+    image = (image - 127.5) / 127.5  # Normalize to [-1, +1]
+    image = np.expand_dims(image, axis=0)
+    return image
+
+# Predicting Bounding Box and Label
+def predict_bbox_and_label(image):
+    """ Predict bounding box and label from the image. """
+    preprocessed_image = preprocess_image(image)
+    pred_bbox = model.predict(preprocessed_image, verbose=0)[0]
+    return pred_bbox
+
+# Display Bounding Box and Label
+def display_image_with_bbox(image, bbox):
+    """ Display the image with the bounding box and label. """
+    h, w, _ = image.shape
+    pred_x1 = int(bbox[0] * w)
+    pred_y1 = int(bbox[1] * h)
+    pred_x2 = int(bbox[2] * w)
+    pred_y2 = int(bbox[3] * h)
+
+    image = cv2.rectangle(image, (pred_x1, pred_y1), (pred_x2, pred_y2), (0, 0, 255), 5)  # RED
+    return image
+
+# Object Detection Dashboard
+def main():
+    st.title("Chest X-ray Disease Detection")
+    
+    # Upload the image
+    uploaded_file = st.file_uploader("Choose a chest X-ray image...", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        """ Convert the file to an opencv image """
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
+        
+        """ Display the uploaded image """
+        st.image(image, caption='Uploaded Chest X-ray.', use_column_width=True)
+        st.write("")
+        st.write("Classifying...")
+        
+        pred_bbox = predict_bbox_and_label(image)
+        
+        """ Display the image with bounding box and label """
+        result_image = display_image_with_bbox(image, pred_bbox)
+        st.image(result_image, caption='Detected Bounding Box.', use_column_width=True)
+        st.write(f"Predicted Bounding Box: {pred_bbox}")
+
+if __name__ == "__main__":
+    main()
+
+"""
+
+FEATURE BARRIER
+
+"""
+
 # Utility Functions
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
