@@ -14,6 +14,7 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from datetime import datetime
+from model import build_model
 
 # Environment Configuration
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "./da-kalbe-63ee33c9cdbb.json"
@@ -27,68 +28,86 @@ OBJECT DETECTION
 
 """
 
-# Model of Object Detection
-model = tf.keras.models.load_model('model.h5')
+model = load_model('model.h5')
 
-# Preprocess Bounding Box
-def preprocess_image(image):
-    """ Preprocess the uploaded image for model prediction. """
-    image = cv2.resize(image, (W, H))
-    image = (image - 127.5) / 127.5  # Normalize to [-1, +1]
-    image = np.expand_dims(image, axis=0)
-    return image
+def cal_iou(y_true, y_pred):
+    x1 = max(y_true[0], y_pred[0])
+    y1 = max(y_true[1], y_pred[1])
+    x2 = min(y_true[2], y_pred[2])
+    y2 = min(y_true[3], y_pred[3])
 
-# Predicting Bounding Box and Label
-def predict_bbox_and_label(image):
-    """ Predict bounding box and label from the image. """
-    preprocessed_image = preprocess_image(image)
-    pred_bbox = model.predict(preprocessed_image, verbose=0)[0]
-    return pred_bbox
+    intersection_area = max(0, x2 - x1 + 1) * max(0, y2 - y1 + 1)
 
-# Display Bounding Box and Label
-def display_image_with_bbox(image, bbox):
-    """ Display the image with the bounding box and label. """
-    h, w, _ = image.shape
-    pred_x1 = int(bbox[0] * w)
-    pred_y1 = int(bbox[1] * h)
-    pred_x2 = int(bbox[2] * w)
-    pred_y2 = int(bbox[3] * h)
+    true_area = (y_true[2] - y_true[0] + 1) * (y_true[3] - y_true[1] + 1)
+    bbox_area = (y_pred[2] - y_pred[0] + 1) * (y_pred[3] - y_pred[1] + 1)
 
-    image = cv2.rectangle(image, (pred_x1, pred_y1), (pred_x2, pred_y2), (0, 0, 255), 5)  # RED
-    return image
+    iou = intersection_area / float(true_area + bbox_area - intersection_area)
+    return iou
 
-# Object Detection Dashboard
-def main():
-    st.title("Chest X-ray Disease Detection")
-    
-    # Upload the image
-    uploaded_file = st.file_uploader("Choose a chest X-ray image...", type=["jpg", "jpeg", "png"])
-    
-    if uploaded_file is not None:
-        """ Convert the file to an opencv image """
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        image = cv2.imdecode(file_bytes, 1)
-        
-        """ Display the uploaded image """
-        st.image(image, caption='Uploaded Chest X-ray.', use_column_width=True)
-        st.write("")
-        st.write("Classifying...")
-        
-        pred_bbox = predict_bbox_and_label(image)
-        
-        """ Display the image with bounding box and label """
-        result_image = display_image_with_bbox(image, pred_bbox)
-        st.image(result_image, caption='Detected Bounding Box.', use_column_width=True)
-        st.write(f"Predicted Bounding Box: {pred_bbox}")
+df = pd.read_excel('BBox_List_2017.xlsx')
+labels_dict = dict(zip(df['Image Index'], df['Finding Label']))
 
-if __name__ == "__main__":
-    main()
+def predict(image):
+    H, W = 512, 512
 
-"""
+    image_resized = cv2.resize(image, (W, H))
+    image_normalized = (image_resized - 127.5) / 127.5
+    image_normalized = np.expand_dims(image_normalized, axis=0)
 
-FEATURE BARRIER
+    # Prediction
+    pred_bbox = model.predict(image_normalized, verbose=0)[0]
 
-"""
+    # Rescale the bbox points
+    pred_x1 = int(pred_bbox[0] * image.shape[1])
+    pred_y1 = int(pred_bbox[1] * image.shape[0])
+    pred_x2 = int(pred_bbox[2] * image.shape[1])
+    pred_y2 = int(pred_bbox[3] * image.shape[0])
+
+    return (pred_x1, pred_y1, pred_x2, pred_y2)
+
+st.title("Chest X-Ray Detection")
+
+uploaded_file = st.file_uploader("Choose an image...", type="png")
+
+if uploaded_file is not None:
+    # Convert the file to an opencv image
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    image = cv2.imdecode(file_bytes, 1)
+
+    # Display image
+    st.image(image, channels="BGR")
+
+    # Perform detection when button is clicked
+    if st.button('Auto Detect'):
+        name = uploaded_file.name.split("/")[-1].split(".")[0]
+        true_bbox_row = df[df['Image Index'] == uploaded_file.name]
+
+        if not true_bbox_row.empty:
+            x1, y1 = int(true_bbox_row['Bbox [x']), int(true_bbox_row['y'])
+            x2, y2 = int(true_bbox_row['x_max']), int(true_bbox_row['y_max'])
+            true_bbox = [x1, y1, x2, y2]
+            label = true_bbox_row['Finding Label'].values[0]
+
+            pred_bbox = predict(image)
+            iou = cal_iou(true_bbox, pred_bbox)
+
+            # Draw true bbox
+            image = cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 5)  # BLUE
+            # Draw predicted bbox
+            image = cv2.rectangle(image, (pred_bbox[0], pred_bbox[1]), (pred_bbox[2], pred_bbox[3]), (0, 0, 255), 5)  # RED
+
+            x_pos = int(image.shape[1] * 0.05)
+            y_pos = int(image.shape[0] * 0.05)
+            font_size = 0.7
+
+            # Display IoU and label
+            cv2.putText(image, f"IoU: {iou:.4f}", (x_pos, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 0, 0), 2)
+            cv2.putText(image, f"Label: {label}", (x_pos, y_pos + 30), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), 2)
+
+            st.image(image, channels="BGR")
+        else:
+            st.write("No bounding box and label found for this image.")
+
 
 # Utility Functions
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
