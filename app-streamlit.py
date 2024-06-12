@@ -14,19 +14,18 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from datetime import datetime
-from model import build_model
 
 # Environment Configuration
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "./da-kalbe-63ee33c9cdbb.json"
 bucket_name = "da-kalbe-ml-result-png"
 storage_client = storage.Client()
-bucket = storage_client.bucket(bucket_name)
-
+bucket_result = storage_client.bucket(bucket_name)
+bucket_name_load = "da-ml-models"
+bucket_load = storage_client.bucket(bucket_name_load)
 """
 
 OBJECT DETECTION
 
-"""
 
 model = load_model('model.h5')
 
@@ -108,60 +107,79 @@ if uploaded_file is not None:
         else:
             st.write("No bounding box and label found for this image.")
 
-
+"""
 # Utility Functions
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
     try:
-        blob = bucket.blob(filename)
+        blob = bucket_result.blob(filename)
         blob.upload_from_file(image_data, content_type=content_type)
         st.write("File ready to be seen in OHIF Viewer.")
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
 
-def png_to_dicom(image: Image, patient_name="Anonymous", patient_id="0000"):
-    """Converts a PNG image to DICOM format."""
-    # Create the metadata for the DICOM file
-    file_meta = Dataset()
-    file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2" # CT Image Storage
-    file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
-    file_meta.ImplementationClassUID = pydicom.uid.generate_uid()
-    file_meta.ImplementationVersionName = "Python PyDICOM"
+def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
+    # Get the blob object
+    blob = bucket_load.blob(file_name)
 
-    # Create the FileDataset (a Dataset with file meta information)
-    ds = FileDataset("converted_image.dcm", {}, file_meta=file_meta, preamble=b"\0" * 128)
-    ds.PatientName = patient_name
-    ds.PatientID = patient_id
-    ds.Modality = "CT"  # Other
-    ds.ContentDate = str(datetime.today().date()).replace("-", "")
-    ds.ContentTime = str(datetime.now().time()).replace(":", "").split(".")[0]
+    # Download the file as a bytes object
+    dicom_bytes = blob.download_as_bytes()
 
-    np_image = np.array(image)
-    if image.mode == "L":
-        ds.Rows, ds.Columns = np_image.shape
+    # Wrap bytes object into BytesIO (file-like object)
+    dicom_stream = io.BytesIO(dicom_bytes)
+
+    # Load the DICOM file 
+    ds = pydicom.dcmread(dicom_stream)
+
+    return ds
+
+def png_to_dicom(image_path: str, image_name: str, dicom: str = None):
+    if dicom is None:
+        ds = load_dicom_from_gcs()
+    else:
+        ds = load_dicom_from_gcs(dicom)
+
+    jpg_image = Image.open(image_path)  # Open the image using the path
+    print("Image Mode:", jpg_image.mode)
+    if jpg_image.mode == 'L':
+        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)
+        ds.Rows = jpg_image.height
+        ds.Columns = jpg_image.width
+        ds.PhotometricInterpretation = "MONOCHROME1"
         ds.SamplesPerPixel = 1
-        ds.PhotometricInterpretation = "MONOCHROME2"
-        ds.BitsAllocated = 8
         ds.BitsStored = 8
+        ds.BitsAllocated = 8
         ds.HighBit = 7
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
-    elif image.mode == "RGB":
-        ds.Rows = image.height
-        ds.Columns = image.width
+        ds.save_as(image_name)
+
+    elif jpg_image.mode == 'RGBA':
+        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)[:, :3]
+        ds.Rows = jpg_image.height
+        ds.Columns = jpg_image.width
         ds.PhotometricInterpretation = "RGB"
         ds.SamplesPerPixel = 3
         ds.BitsStored = 8
         ds.BitsAllocated = 8
         ds.HighBit = 7
         ds.PixelRepresentation = 0
-        ds.PlanarConfiguration = 0
         ds.PixelData = np_image.tobytes()
+        ds.save_as(image_name)
+    elif jpg_image.mode == 'RGB': 
+        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)[:, :3] # Remove alpha if present
+        ds.Rows = jpg_image.height
+        ds.Columns = jpg_image.width
+        ds.PhotometricInterpretation = "RGB"
+        ds.SamplesPerPixel = 3
+        ds.BitsStored = 8
+        ds.BitsAllocated = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PixelData = np_image.tobytes()
+        ds.save_as(image_name)
     else:
-        raise ValueError("Unsupported image mode")
-
-    # Set the transfer syntax
-    ds.file_meta.TransferSyntaxUID = pydicom.uid.ImplicitVRLittleEndian
+        raise ValueError("Unsupported image mode:", jpg_image.mode)
     return ds
 
 def save_dicom_to_bytes(dicom):
@@ -170,19 +188,15 @@ def save_dicom_to_bytes(dicom):
     dicom_bytes.seek(0)
     return dicom_bytes
 
-def upload_folder_images(image_path, enhanced_image_path):
+def upload_folder_images(original_image_path, enhanced_image_path):
     # Extract the base name of the uploaded image without the extension
     folder_name = f"{uploaded_file.name}"
     # Create the folder in Cloud Storage
-    bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-    
-    # Open the images
-    original_image = Image.open(image_path)
-    enhanced_image = Image.open(enhanced_image_path)
+    bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
     
     # Convert images to DICOM
-    original_dicom = png_to_dicom(original_image)
-    enhanced_dicom = png_to_dicom(enhanced_image)
+    original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
+    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_type + ".dcm")
 
     # Convert DICOM to byte stream for uploading
     original_dicom_bytes = io.BytesIO()
@@ -403,7 +417,7 @@ if uploaded_gradcam_file is not None:
             folder_name = f"{uploaded_file.name}"
 
             # Create the folder in Cloud Storage
-            bucket.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
+            bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
             
             # Upload the gradcam image to Google Cloud Storage
             destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
