@@ -373,36 +373,112 @@ def redirect_button(url):
     if button:
         st.markdown(f'<meta http-equiv="refresh" content="0;url={url}" />', unsafe_allow_html=True)
 
-# Streamlit Interface
+###########################################################################################
+########################### Streamlit Interface ###########################################
+###########################################################################################
+
 st.title("Image Enhancement and Quality Evaluation")
 
 uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
 enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
+st.title("Image Enhancement and Quality Evaluation")
+
+st.sidebar.title("Configuration")
+uploaded_file = st.sidebar.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg", "dcm"])
+enhancement_type = st.sidebar.selectbox(
+    "Enhancement Type", 
+    ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"]
+)
+
+# File uploader for DICOM files
 if uploaded_file is not None:
-    original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
-    enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
+    if hasattr(uploaded_file, 'name'):
+        file_extension = uploaded_file.name.split(".")[-1]  # Get the file extension
+        if file_extension.lower() == "dcm":
+            # Process DICOM file
+            dicom_data = pydicom.dcmread(uploaded_file)
+            pixel_array = dicom_data.pixel_array
+            # Process the pixel_array further if needed
+            # Extract all metadata
+            metadata = {elem.keyword: elem.value for elem in dicom_data if elem.keyword}
+            metadata_dict = {str(key): str(value) for key, value in metadata.items()}
+            df = pd.DataFrame.from_dict(metadata_dict, orient='index', columns=['Value'])
 
-    st.image(original_image, caption='Original Image', use_column_width=True)
-    st.image(enhanced_image, caption='Enhanced Image', use_column_width=True)
+            # Display metadata in the left-most column
+            with st.expander("Lihat Metadata"):
+                st.write("Metadata:")
+                st.dataframe(df)
 
-    st.write("MSE:", mse)
-    st.write("PSNR:", psnr)
-    st.write("Maxerr:", maxerr)
-    st.write("L2Rat:", l2rat)
+            # Read the pixel data
+            pixel_array = dicom_data.pixel_array
+            img_array = pixel_array.astype(float)
+            img_array = (np.maximum(img_array, 0) / img_array.max()) * 255.0  # Normalize to 0-255
+            img_array = np.uint8(img_array)  # Convert to uint8
+            img = Image.fromarray(img_array)
 
-    # Save enhanced image to a file
-    enhanced_image_path = "enhanced_image.png"
-    cv2.imwrite(enhanced_image_path, enhanced_image)
+            col1, col2 = st.columns(2)
+            # Check the number of dimensions of the image
+            if img_array.ndim == 3:
+                n_slices = img_array.shape[0]
+                if n_slices > 1:
+                    slice_ix = st.sidebar.slider('Slice', 0, n_slices - 1, int(n_slices / 2))
+                    # Display the selected slice
+                    st.image(img_array[slice_ix, :, :], caption=f"Slice {slice_ix}", use_column_width=True)
+                else:
+                    # If there's only one slice, just display it
+                    st.image(img_array[0, :, :], caption="Single Slice Image", use_column_width=True)
+            elif img_array.ndim == 2:
+                # If the image is 2D, just display it
+                with col1:
+                    st.image(img_array, caption="Original Image", use_column_width=True)
+            else:
+                st.error("Unsupported image dimensions")
+            
+            original_image = img_array
 
-    # Save original image to a file
-    original_image_path = "original_image.png"
-    cv2.imwrite(original_image_path, original_image)
+            # Example: convert to grayscale if it's a color image
+            if len(pixel_array.shape) > 2:
+                pixel_array = pixel_array[:, :, 0]  # Take only the first channel
+            # Perform image enhancement and evaluation on pixel_array
+            enhanced_image, mse, psnr, maxerr, l2rat = process_image(pixel_array, enhancement_type)
+        else:
+            # Process regular image file
+            original_image = np.array(keras.utils.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
+            # Perform image enhancement and evaluation on original_image
+            enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.image(original_image, caption="Original Image", use_column_width=True)
+        with col2:
+            st.image(enhanced_image, caption='Enhanced Image', use_column_width=True)
+
+        col1, col2 = st.columns(2)
+        col3, col4 = st.columns(2)
+
+        col1.metric("MSE", round(mse,3))
+        col2.metric("PSNR", round(psnr,3))
+        col3.metric("Maxerr", round(maxerr,3))
+        col4.metric("L2Rat", round(l2rat,3))
+
+        # Save enhanced image to a file
+        enhanced_image_path = "enhanced_image.png"
+        cv2.imwrite(enhanced_image_path, enhanced_image)
+
+        
+        # Save enhanced image to a file
+        enhanced_image_path = "enhanced_image.png"
+        cv2.imwrite(enhanced_image_path, enhanced_image)
+
+        # Save original image to a file
+        original_image_path = "original_image.png"
+        cv2.imwrite(original_image_path, original_image)
     
-    upload_folder_images(original_image_path, enhanced_image_path)
+        if st.button("Send to OHIF"):
+            upload_folder_images(original_image_path, enhanced_image_path)
 
     # Add the redirect button
-    redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/")
+    st.button(redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/"))
 
 
 st.title("Grad-CAM Visualization")
