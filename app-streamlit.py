@@ -112,6 +112,10 @@ if uploaded_file is not None:
 
 # Upload to GCS ###########################################################################
 
+# Dictionaries to track InstanceNumbers and StudyInstanceUIDs per filename
+instance_numbers = {}
+study_uids = {}
+
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
     try:
@@ -121,9 +125,9 @@ def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='applicati
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
 
-def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
+def load_dicom_from_gcs(dicom_name: str = "dicom_00000001_000.dcm"):
     # Get the blob object
-    blob = bucket_load.blob(file_name)
+    blob = bucket_load.blob(dicom_name)
 
     # Download the file as a bytes object
     dicom_bytes = blob.download_as_bytes()
@@ -131,12 +135,13 @@ def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
     # Wrap bytes object into BytesIO (file-like object)
     dicom_stream = io.BytesIO(dicom_bytes)
 
-    # Load the DICOM file 
+    # Load the DICOM file
     ds = pydicom.dcmread(dicom_stream)
 
     return ds
 
-def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dicom: str = None, study_instance_uid: str = None):
+def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_number: int = 1, dicom: str = None, study_instance_uid: str = None, ):
+    global instance_numbers, study_uids
     """Converts a PNG image to DICOM, setting related Study/Series UIDs.
 
     Args:
@@ -154,11 +159,10 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
     Raises:
         ValueError: If the PNG image mode is unsupported.
     """
-    if dicom is None:
-        ds = load_dicom_from_gcs()
-    else:
-        ds = load_dicom_from_gcs(dicom)
+    # Load the template DICOM file
+    ds = load_dicom_from_gcs() if dicom is None else load_dicom_from_gcs(dicom)
 
+    # Process the image
     jpg_image = Image.open(image_path)  # the PNG or JPG file to be replaced
     print("Image Mode:", jpg_image.mode)
 
@@ -178,19 +182,41 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
 
-        if study_instance_uid is None:
-            ds.StudyInstanceUID = generate_uid()
-        else:
+        if not hasattr(ds, 'PatientName') or ds.PatientName == '':
+            ds.PatientName = os.path.splitext(file_name)[0]  # Remove extension
+
+        ds.SeriesDescription = 'original image' if image_name == 'original_image.dcm' else enhancement_type
+
+        if hasattr(ds, 'StudyDescription'):
+            del ds.StudyDescription
+
+        if study_instance_uid:
             ds.StudyInstanceUID = study_instance_uid
+        else:
+            # Check if a StudyInstanceUID exists for the file name
+            if file_name in study_uids:
+                ds.StudyInstanceUID = study_uids[file_name]
+                print(f"Reusing StudyInstanceUID for '{file_name}'")
+            else:
+                # Generate a new StudyInstanceUID and store it
+                new_study_uid = generate_uid()
+                study_uids[file_name] = new_study_uid
+                ds.StudyInstanceUID = new_study_uid
+                print(f"New StudyInstanceUID generated for '{file_name}'")
 
         # Generate a new SeriesInstanceUID and SOPInstanceUID for the added image
         ds.SeriesInstanceUID = generate_uid()
         ds.SOPInstanceUID = generate_uid()
 
         if hasattr(ds, 'InstanceNumber'):
-            ds.InstanceNumber = int(ds.InstanceNumber) + 1
+            instance_numbers[file_name] = int(ds.InstanceNumber) + 1
         else:
-            ds.InstanceNumber = instance_number
+            # Manage InstanceNumber based on filename
+            if file_name in instance_numbers:
+                instance_numbers[file_name] += 1
+            else:
+                instance_numbers[file_name] = 1
+        ds.InstanceNumber = int(instance_numbers[file_name])
 
         ds.save_as(image_name)
     else:
@@ -198,19 +224,24 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
 
     return ds
 
-def upload_folder_images(original_image_path, enhanced_image_path):
-    # Extract the base name of the uploaded image without the extension
-    folder_name = os.path.splitext(uploaded_file.name)[0]
-    # Create the folder in Cloud Storage
-    bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-    enhancement_name = enhancement_type.split('_')[-1]
+
+def upload_folder_images(original_image_path, enhanced_image_path, file_name):
     # Convert images to DICOM if result is png
     if not original_image_path.lower().endswith('.dcm'):
-        original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
+        original_dicom = png_to_dicom(original_image_path, "original_image.dcm", file_name=file_name)
     else:
         original_dicom = pydicom.dcmread(original_image_path)
     study_instance_uid = original_dicom.StudyInstanceUID
-    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm", study_instance_uid=study_instance_uid)
+
+    # Use StudyInstanceUID as folder name
+    folder_name = study_instance_uid
+
+    # Create the folder in Cloud Storage
+    bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
+
+    enhancement_name = enhancement_type.split('_')[-1]
+
+    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm", study_instance_uid=study_instance_uid, file_name=file_name)
 
     # Convert DICOM to byte stream for uploading
     original_dicom_bytes = io.BytesIO()
@@ -412,6 +443,7 @@ if uploaded_file is None:
 # File uploader for DICOM files
 if uploaded_file is not None:
     if hasattr(uploaded_file, 'name'):
+        file_name = uploaded_file.name
         file_extension = uploaded_file.name.split(".")[-1]  # Get the file extension
         if file_extension.lower() == "dcm":
             # Process DICOM file
@@ -452,7 +484,7 @@ if uploaded_file is not None:
                     st.image(img_array, caption="Original Image", use_column_width=True)
             else:
                 st.error("Unsupported image dimensions")
-            
+
             original_image = img_array
 
             # Example: convert to grayscale if it's a color image
@@ -478,7 +510,7 @@ if uploaded_file is not None:
         col2.metric("PSNR", round(psnr,3))
         col3.metric("Maxerr", round(maxerr,3))
         col4.metric("L2Rat", round(l2rat,3))
-        
+
         # Save enhanced image to a file
         enhanced_image_path = "enhanced_image.png"
         cv2.imwrite(enhanced_image_path, enhanced_image)
@@ -486,9 +518,9 @@ if uploaded_file is not None:
         # Save original image to a file
         original_image_path = "original_image.png"
         cv2.imwrite(original_image_path, original_image)
-    
+
         if st.button("Send to OHIF"):
-            upload_folder_images(original_image_path, enhanced_image_path)
+            upload_folder_images(original_image_path, enhanced_image_path, file_name)
 
     # Add the redirect button
     redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/")
@@ -522,7 +554,7 @@ if uploaded_file is not None:
 
             # Create the folder in Cloud Storage
             bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-            
+
             # Upload the gradcam image to Google Cloud Storage
             destination_blob_name = f"gradcam_images/{uploaded_file.name}_{idx+1}.png"
             upload_to_gcs(gradcam_image_path, destination_blob_name)
