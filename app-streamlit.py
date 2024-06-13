@@ -28,91 +28,87 @@ bucket_load = storage_client.bucket(bucket_name_load)
 # Utility Functions #
 # object detection ########################################################################
 
-model_path = os.path.join("model.h5")
-model = tf.keras.models.load_model(model_path)
+H = 224
+W = 224
 
-H, W = 512, 512
+@st.cache_resource
+def load_model():
+    model = tf.keras.models.load_model("model.h5", compile=False)
+    model.compile(
+        loss={
+            "bbox": "mse",
+            "class": "sparse_categorical_crossentropy"
+        },
+        optimizer=tf.keras.optimizers.Adam(),
+        metrics={
+            "bbox": ['mse'],
+            "class": ['accuracy']
+        }
+    )
+    return model
 
-test_samples_folder = 'object_detection_test_samples'
+def preprocess_image(image):
+    """ Preprocess the image to the required size and normalization. """
+    image = cv2.resize(image, (W, H))
+    image = (image - 127.5) / 127.5  # Normalize to [-1, +1]
+    image = np.expand_dims(image, axis=0).astype(np.float32)
+    return image
 
-def cal_iou(y_true, y_pred):
-    x1 = max(y_true[0], y_pred[0])
-    y1 = max(y_true[1], y_pred[1])
-    x2 = min(y_true[2], y_pred[2])
-    y2 = min(y_true[3], y_pred[3])
+def predict(model, image):
+    """ Predict bounding box and label for the input image. """
+    pred_bbox, pred_class = model.predict(image)
+    pred_label_confidence = np.max(pred_class, axis=1)[0]
+    pred_label = np.argmax(pred_class, axis=1)[0]
+    return pred_bbox[0], pred_label, pred_label_confidence
 
-    intersection_area = max(0, x2 - x1 + 1) * max(0, y2 - y1 + 1)
+def draw_bbox(image, bbox):
+    """ Draw bounding box on the image. """
+    h, w, _ = image.shape
+    x1, y1, x2, y2 = bbox
+    x1, y1, x2, y2 = int(x1 * w), int(y1 * h), int(x2 * w), int(y2 * h)
+    image = cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    return image
 
-    true_area = (y_true[2] - y_true[0] + 1) * (y_true[3] - y_true[1] + 1)
-    bbox_area = (y_pred[2] - y_pred[0] + 1) * (y_pred[3] - y_pred[1] + 1)
+st.title("Chest X-ray Disease Detection")
 
-    iou = intersection_area / float(true_area + bbox_area - intersection_area)
-    return iou
+st.write("Upload a chest X-ray image and click on 'Detect' to find out if there's any disease.")
 
-df = pd.read_excel('BBox_List_2017.xlsx')
-labels_dict = dict(zip(df['Image Index'], df['Finding Label']))
+model = load_model()
 
-def predict(image):
-    H, W = 512, 512
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-    image_resized = cv2.resize(image, (W, H))
-    image_normalized = (image_resized - 127.5) / 127.5
-    image_normalized = np.expand_dims(image_normalized, axis=0)
-
-    # Prediction
-    pred_bbox = model.predict(image_normalized, verbose=0)[0]
-
-    # Rescale the bbox points
-    pred_x1 = int(pred_bbox[0] * image.shape[1])
-    pred_y1 = int(pred_bbox[1] * image.shape[0])
-    pred_x2 = int(pred_bbox[2] * image.shape[1])
-    pred_y2 = int(pred_bbox[3] * image.shape[0])
-
-    return (pred_x1, pred_y1, pred_x2, pred_y2)
-
-st.title("AI Integration for Chest X-Ray Imaging")
-
-# Concept 1: Select from test samples
-st.header("Select Test Sample Images")
-test_sample_images = [os.path.join(test_samples_folder, f) for f in os.listdir(test_samples_folder) if f.endswith('.jpg') or f.endswith('.png')]
-test_sample_selected = st.selectbox("Select a test sample image", test_sample_images)
-if test_sample_selected:
-    st.image(test_sample_selected, caption='Selected Test Sample Image', use_column_width=True)
-
-# Concept 2: Upload the image
-st.header("Upload Chest X-ray Image")
-uploaded_file = st.file_uploader("Choose an image...", type="png")
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     image = cv2.imdecode(file_bytes, 1)
 
-    st.image(image, channels="BGR")
-    if st.button('Auto Detect'):
-        name = uploaded_file.name.split("/")[-1].split(".")[0]
-        true_bbox_row = df[df['Image Index'] == uploaded_file.name]
+    st.image(image, caption='Uploaded Image.', use_column_width=True)
 
-        if not true_bbox_row.empty:
-            x1, y1 = int(true_bbox_row['Bbox [x']), int(true_bbox_row['y'])
-            x2, y2 = int(true_bbox_row['x_max']), int(true_bbox_row['y_max'])
-            true_bbox = [x1, y1, x2, y2]
-            label = true_bbox_row['Finding Label'].values[0]
+    if st.button('Detect'):
+        st.write("Processing...")
+        input_image = preprocess_image(image)
+        pred_bbox, pred_label, pred_label_confidence = predict(model, input_image)
 
-            pred_bbox = predict(image)
-            iou = cal_iou(true_bbox, pred_bbox)
+        label_mapping = {
+            0: 'Atelectasis',
+            1: 'Cardiomegaly',
+            2: 'Effusion',
+            3: 'Infiltrate',
+            4: 'Mass',
+            5: 'Nodule',
+            6: 'Pneumonia',
+            7: 'Pneumothorax'
+        }
 
-            image = cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 5)  # BLUE
-            image = cv2.rectangle(image, (pred_bbox[0], pred_bbox[1]), (pred_bbox[2], pred_bbox[3]), (0, 0, 255), 5)  # RED
-
-            x_pos = int(image.shape[1] * 0.05)
-            y_pos = int(image.shape[0] * 0.05)
-            font_size = 0.7
-
-            cv2.putText(image, f"IoU: {iou:.4f}", (x_pos, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 0, 0), 2)
-            cv2.putText(image, f"Label: {label}", (x_pos, y_pos + 30), cv2.FONT_HERSHEY_SIMPLEX, font_size, (255, 255, 255), 2)
-
-            st.image(image, channels="BGR")
+        if pred_label_confidence < 0.01:
+            st.write("May not detect a disease.")
         else:
-            st.write("No bounding box and label found for this image.")
+            pred_label_name = label_mapping[pred_label]
+            st.write(f"Prediction Label: {pred_label_name}")
+            st.write(f"Prediction Bounding Box: {pred_bbox}")
+            st.write(f"Prediction Confidence: {pred_label_confidence:.2f}")
+
+            output_image = draw_bbox(image.copy(), pred_bbox)
+            st.image(output_image, caption='Detected Image.', use_column_width=True)
 
 # Upload to GCS ###########################################################################
 
