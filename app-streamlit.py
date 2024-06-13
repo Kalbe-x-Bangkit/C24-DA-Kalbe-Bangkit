@@ -140,60 +140,62 @@ def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
 
     return ds
 
-def png_to_dicom(image_path: str, image_name: str, dicom: str = None):
+def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dicom: str = None):
+    """Converts a PNG image to DICOM, setting related Study/Series UIDs.
+
+    Args:
+        image_path (str): Path to the PNG image file.
+        image_name (str): Desired filename for the output DICOM file.
+        dicom (str, optional): Path to a template DICOM file. If None,
+                                a default template will be used.
+                                Defaults to None.
+        instance_number (int): Instance number to assign to the DICOM file.
+                                Defaults to 1.
+
+    Returns:
+        pydicom.Dataset: The modified DICOM dataset.
+
+    Raises:
+        ValueError: If the PNG image mode is unsupported.
+    """
     if dicom is None:
         ds = load_dicom_from_gcs()
     else:
         ds = load_dicom_from_gcs(dicom)
 
-    jpg_image = Image.open(image_path)  # Open the image using the path
+    jpg_image = Image.open(image_path)  # the PNG or JPG file to be replaced
     print("Image Mode:", jpg_image.mode)
-    if jpg_image.mode == 'L':
-        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)
-        ds.Rows = jpg_image.height
-        ds.Columns = jpg_image.width
-        ds.PhotometricInterpretation = "MONOCHROME1"
-        ds.SamplesPerPixel = 1
-        ds.BitsStored = 8
-        ds.BitsAllocated = 8
-        ds.HighBit = 7
-        ds.PixelRepresentation = 0
-        ds.PixelData = np_image.tobytes()
-        ds.save_as(image_name)
 
-    elif jpg_image.mode == 'RGBA':
-        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)[:, :3]
+    if jpg_image.mode in ('L', 'RGBA', 'RGB'):
+        if jpg_image.mode == 'RGBA':
+            np_image = np.array(jpg_image.getdata(), dtype=np.uint8)[:,:3]
+        else:
+            np_image = np.array(jpg_image.getdata(),dtype=np.uint8)
+
         ds.Rows = jpg_image.height
         ds.Columns = jpg_image.width
-        ds.PhotometricInterpretation = "RGB"
-        ds.SamplesPerPixel = 3
+        ds.PhotometricInterpretation = "MONOCHROME1" if jpg_image.mode == 'L' else "RGB"
+        ds.SamplesPerPixel = 1 if jpg_image.mode == 'L' else 3
         ds.BitsStored = 8
         ds.BitsAllocated = 8
         ds.HighBit = 7
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
-        ds.save_as(image_name)
-    elif jpg_image.mode == 'RGB': 
-        np_image = np.array(jpg_image.getdata(), dtype=np.uint8)[:, :3] # Remove alpha if present
-        ds.Rows = jpg_image.height
-        ds.Columns = jpg_image.width
-        ds.PhotometricInterpretation = "RGB"
-        ds.SamplesPerPixel = 3
-        ds.BitsStored = 8
-        ds.BitsAllocated = 8
-        ds.HighBit = 7
-        ds.PixelRepresentation = 0
-        ds.PixelData = np_image.tobytes()
+
+        # Generate a new SeriesInstanceUID and SOPInstanceUID for the added image
+        ds.SeriesInstanceUID = generate_uid()
+        ds.SOPInstanceUID = generate_uid()
+
+        if hasattr(ds, 'InstanceNumber'):
+            ds.InstanceNumber = int(ds.InstanceNumber) + 1
+        else:
+            ds.InstanceNumber = instance_number
+
         ds.save_as(image_name)
     else:
-        raise ValueError("Unsupported image mode:", jpg_image.mode)
-    return ds
+        raise ValueError(f"Unsupported image mode: {jpg_image.mode}")
 
-def save_dicom_to_bytes(dicom):
-    dicom_bytes = io.BytesIO()
-    dicom.save_as(dicom_bytes)
-    dicom_bytes.seek(0)
-    return dicom_bytes
+    return ds
 
 def upload_folder_images(original_image_path, enhanced_image_path):
     # Extract the base name of the uploaded image without the extension
@@ -201,8 +203,11 @@ def upload_folder_images(original_image_path, enhanced_image_path):
     # Create the folder in Cloud Storage
     bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
     enhancement_name = enhancement_type.split('_')[-1]
-    # Convert images to DICOM
-    original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
+    # Convert images to DICOM if result is png
+    if not original_image_path.lower().endswith('.dcm'):
+        original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
+    else:
+        original_dicom = pydicom.dcmread(original_image_path)
     enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm")
 
     # Convert DICOM to byte stream for uploading
@@ -388,8 +393,8 @@ def redirect_button(url):
 
 st.title("Image Enhancement and Quality Evaluation")
 
-uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
-enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
+# uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
+# enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
 st.sidebar.title("Configuration")
 uploaded_file = st.sidebar.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg", "dcm"])
@@ -397,6 +402,10 @@ enhancement_type = st.sidebar.selectbox(
     "Enhancement Type", 
     ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"]
 )
+
+if uploaded_file is None:
+    uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "dcm"])
+    enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
 # File uploader for DICOM files
 if uploaded_file is not None:
@@ -467,11 +476,6 @@ if uploaded_file is not None:
         col2.metric("PSNR", round(psnr,3))
         col3.metric("Maxerr", round(maxerr,3))
         col4.metric("L2Rat", round(l2rat,3))
-
-        # Save enhanced image to a file
-        enhanced_image_path = "enhanced_image.png"
-        cv2.imwrite(enhanced_image_path, enhanced_image)
-
         
         # Save enhanced image to a file
         enhanced_image_path = "enhanced_image.png"
@@ -489,9 +493,11 @@ if uploaded_file is not None:
 
 
 st.title("Grad-CAM Visualization")
+st.write("Grad Cam visualization")
 
-uploaded_gradcam_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
-if uploaded_gradcam_file is not None:
+# uploaded_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
+if uploaded_file is not None:
+    st.session_state["gradcam"] = uploaded_file
     df_file = st.file_uploader("Upload DataFrame for Mean/Std Calculation", type=["csv"])
     labels = st.text_area("Labels", placeholder="Enter labels separated by commas")
     model_path = st.text_input("Model Path", 'model/densenet.hdf5')
@@ -502,7 +508,7 @@ if uploaded_gradcam_file is not None:
         labels = labels.split(',')
         model = load_model(model_path)
         pretrained_model = load_model(pretrained_model_path)
-        gradcam_images = compute_gradcam(uploaded_gradcam_file, pretrained_model, df, labels)
+        gradcam_images = compute_gradcam(uploaded_file, pretrained_model, df, labels)
 
         for idx, (gradcam_image, label) in enumerate(gradcam_images):
             st.image(gradcam_image, caption=f'Grad-CAM {idx+1}: {label}', use_column_width=True)
@@ -516,5 +522,5 @@ if uploaded_gradcam_file is not None:
             bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
             
             # Upload the gradcam image to Google Cloud Storage
-            destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
+            destination_blob_name = f"gradcam_images/{uploaded_file.name}_{idx+1}.png"
             upload_to_gcs(gradcam_image_path, destination_blob_name)
