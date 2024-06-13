@@ -113,8 +113,11 @@ if uploaded_file is not None:
 # Upload to GCS ###########################################################################
 
 # Dictionaries to track InstanceNumbers and StudyInstanceUIDs per filename
-instance_numbers = {}
-study_uids = {}
+# Initialize session state for instance numbers and study UIDs
+if 'instance_numbers' not in st.session_state:
+    st.session_state.instance_numbers = {}
+if 'study_uids' not in st.session_state:
+    st.session_state.study_uids = {}
 
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
@@ -141,7 +144,6 @@ def load_dicom_from_gcs(dicom_name: str = "dicom_00000001_000.dcm"):
     return ds
 
 def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_number: int = 1, dicom: str = None, study_instance_uid: str = None, ):
-    global instance_numbers, study_uids
     """Converts a PNG image to DICOM, setting related Study/Series UIDs.
 
     Args:
@@ -194,13 +196,13 @@ def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_numb
             ds.StudyInstanceUID = study_instance_uid
         else:
             # Check if a StudyInstanceUID exists for the file name
-            if file_name in study_uids:
-                ds.StudyInstanceUID = study_uids[file_name]
+            if file_name in st.session_state.study_uids:
+                ds.StudyInstanceUID = st.session_state.study_uids[file_name]
                 print(f"Reusing StudyInstanceUID for '{file_name}'")
             else:
                 # Generate a new StudyInstanceUID and store it
                 new_study_uid = generate_uid()
-                study_uids[file_name] = new_study_uid
+                st.session_state.study_uids[file_name] = new_study_uid
                 ds.StudyInstanceUID = new_study_uid
                 print(f"New StudyInstanceUID generated for '{file_name}'")
 
@@ -209,21 +211,20 @@ def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_numb
         ds.SOPInstanceUID = generate_uid()
 
         if hasattr(ds, 'InstanceNumber'):
-            instance_numbers[file_name] = int(ds.InstanceNumber) + 1
+            st.session_state.instance_numbers[file_name] = int(ds.InstanceNumber) + 1
         else:
             # Manage InstanceNumber based on filename
-            if file_name in instance_numbers:
-                instance_numbers[file_name] += 1
+            if file_name in st.session_state.instance_numbers:
+                st.session_state.instance_numbers[file_name] += 1
             else:
-                instance_numbers[file_name] = 1
-        ds.InstanceNumber = int(instance_numbers[file_name])
+                st.session_state.instance_numbers[file_name] = 1
+        ds.InstanceNumber = int(st.session_state.instance_numbers[file_name])
 
         ds.save_as(image_name)
     else:
         raise ValueError(f"Unsupported image mode: {jpg_image.mode}")
 
     return ds
-
 
 def upload_folder_images(original_image_path, enhanced_image_path, file_name):
     # Convert images to DICOM if result is png
