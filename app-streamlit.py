@@ -140,7 +140,7 @@ def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
 
     return ds
 
-def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dicom: str = None):
+def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dicom: str = None, study_instance_uid: str = None):
     """Converts a PNG image to DICOM, setting related Study/Series UIDs.
 
     Args:
@@ -182,6 +182,11 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
 
+        if study_instance_uid is None:
+            ds.StudyInstanceUID = generate_uid()
+        else:
+            ds.StudyInstanceUID = study_instance_uid
+
         # Generate a new SeriesInstanceUID and SOPInstanceUID for the added image
         ds.SeriesInstanceUID = generate_uid()
         ds.SOPInstanceUID = generate_uid()
@@ -208,7 +213,8 @@ def upload_folder_images(original_image_path, enhanced_image_path):
         original_dicom = png_to_dicom(original_image_path, "original_image.dcm")
     else:
         original_dicom = pydicom.dcmread(original_image_path)
-    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm")
+    study_instance_uid = original_dicom.StudyInstanceUID
+    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm", study_instance_uid=study_instance_uid)
 
     # Convert DICOM to byte stream for uploading
     original_dicom_bytes = io.BytesIO()
