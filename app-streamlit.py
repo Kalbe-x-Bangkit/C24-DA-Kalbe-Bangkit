@@ -478,7 +478,7 @@ if uploaded_file is not None:
             upload_folder_images(original_image_path, enhanced_image_path)
 
     # Add the redirect button
-    st.button(redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/"))
+    redirect_button("https://new-ohif-viewer-k7c3gdlxua-et.a.run.app/")
 
 
 st.title("Grad-CAM Visualization")
