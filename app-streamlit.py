@@ -5,7 +5,7 @@ import pydicom
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import generate_uid
 from tensorflow.keras.preprocessing import image
-# from google.cloud import storage
+from google.cloud import storage
 import os
 import io
 from PIL import Image
@@ -14,14 +14,19 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from datetime import datetime
+import keras
 
-# Environment Configuration
-# os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "./da-kalbe-63ee33c9cdbb.json"
-# bucket_name = "da-kalbe-ml-result-png"
-# storage_client = storage.Client()
-# bucket_result = storage_client.bucket(bucket_name)
-# bucket_name_load = "da-ml-models"
-# bucket_load = storage_client.bucket(bucket_name_load)
+# Environment Configuration ###############################################################
+
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "./da-kalbe-63ee33c9cdbb.json"
+bucket_name = "da-kalbe-ml-result-png"
+storage_client = storage.Client()
+bucket_result = storage_client.bucket(bucket_name)
+bucket_name_load = "da-ml-models"
+bucket_load = storage_client.bucket(bucket_name_load)
+
+# Utility Functions #
+# object detection ########################################################################
 
 model_path = os.path.join("model.h5")
 model = tf.keras.models.load_model(model_path)
@@ -109,9 +114,8 @@ if uploaded_file is not None:
         else:
             st.write("No bounding box and label found for this image.")
 
+# Upload to GCS ###########################################################################
 
-
-# Utility Functions
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
     try:
@@ -213,6 +217,8 @@ def upload_folder_images(original_image_path, enhanced_image_path):
     upload_to_gcs(original_dicom_bytes, folder_name + '/' + 'original_image.dcm', content_type='application/dicom')
     upload_to_gcs(enhanced_dicom_bytes, folder_name + '/' + enhancement_name + '.dcm', content_type='application/dicom')
 
+# Grad cam ################################################################################
+
 class GradCAM:
     def __init__(self, model, layer_name):
         self.model = model
@@ -294,6 +300,8 @@ def compute_gradcam(img, model, df, labels, layer_name='bn'):
 
     return gradcam_images
 
+# Image enhancement #######################################################################
+
 def calculate_mse(original_image, enhanced_image):
     mse = np.mean((original_image - enhanced_image) ** 2)
     return mse
@@ -367,7 +375,8 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
-# Function to add a button to redirect to the URL
+# Other Utils #############################################################################
+
 def redirect_button(url):
     button = st.button('Go to OHIF Viewer')
     if button:
@@ -381,8 +390,6 @@ st.title("Image Enhancement and Quality Evaluation")
 
 uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
 enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
-
-st.title("Image Enhancement and Quality Evaluation")
 
 st.sidebar.title("Configuration")
 uploaded_file = st.sidebar.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg", "dcm"])
