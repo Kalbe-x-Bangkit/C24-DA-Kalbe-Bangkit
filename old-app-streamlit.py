@@ -36,9 +36,9 @@ def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='applicati
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
 
-def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
+def load_dicom_from_gcs(dicom_name: str = "dicom_00000001_000.dcm"):
     # Get the blob object
-    blob = bucket_load.blob(file_name)
+    blob = bucket_load.blob(dicom_name)
 
     # Download the file as a bytes object
     dicom_bytes = blob.download_as_bytes()
@@ -70,11 +70,10 @@ def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_numb
     Raises:
         ValueError: If the PNG image mode is unsupported.
     """
-    if dicom is None:
-        ds = load_dicom_from_gcs()
-    else:
-        ds = load_dicom_from_gcs(dicom)
+    # Load the template DICOM file
+    ds = load_dicom_from_gcs() if dicom is None else load_dicom_from_gcs(dicom)
 
+    # Process the image
     jpg_image = Image.open(image_path)  # the PNG or JPG file to be replaced
     print("Image Mode:", jpg_image.mode)
 
@@ -94,12 +93,27 @@ def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_numb
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
 
+        if not hasattr(ds, 'PatientName') or ds.PatientName == '':
+            ds.PatientName = os.path.splitext(file_name)[0]  # Remove extension
+
+        ds.SeriesDescription = 'original image' if image_name == 'original_image.dcm' else enhancement_type
+
+        if hasattr(ds, 'StudyDescription'):
+            del ds.StudyDescription
+
         if study_instance_uid:
             ds.StudyInstanceUID = study_instance_uid
         else:
-            if file_name not in study_uids:
-                study_uids[file_name] = generate_uid()  # Generate a new UID for the "folder"
-            ds.StudyInstanceUID = study_uids[file_name]
+            # Check if a StudyInstanceUID exists for the file name
+            if file_name in study_uids:
+                ds.StudyInstanceUID = study_uids[file_name]
+                print(f"Reusing StudyInstanceUID for '{file_name}'")
+            else:
+                # Generate a new StudyInstanceUID and store it
+                new_study_uid = generate_uid()
+                study_uids[file_name] = new_study_uid
+                ds.StudyInstanceUID = new_study_uid
+                print(f"New StudyInstanceUID generated for '{file_name}'")
 
         # Generate a new SeriesInstanceUID and SOPInstanceUID for the added image
         ds.SeriesInstanceUID = generate_uid()
@@ -324,7 +338,7 @@ if uploaded_file is not None:
         # Handle photometric interpretation
         if ds.PhotometricInterpretation == 'MONOCHROME1':
             # Invert grayscale if needed
-            pixel_array = 255 - pixel_array 
+            pixel_array = 255 - pixel_array
         elif ds.PhotometricInterpretation != 'RGB':
             st.warning("Unsupported Photometric Interpretation. Displaying as grayscale.")
             pixel_array = pixel_array.astype(float)
@@ -332,7 +346,7 @@ if uploaded_file is not None:
             pixel_array = pixel_array.astype(np.uint8)
 
         # Convert to RGB for display in Streamlit
-        original_image = cv2.cvtColor(pixel_array, cv2.COLOR_GRAY2RGB) 
+        original_image = cv2.cvtColor(pixel_array, cv2.COLOR_GRAY2RGB)
     else:
         # Handle PNG/JPG as before
         original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
@@ -356,5 +370,5 @@ if uploaded_file is not None:
     # Save original image to a file
     original_image_path = "original_image.png"
     cv2.imwrite(original_image_path, original_image)
-
+    print(f"Uploaded file: {file_name}")
     upload_folder_images(original_image_path, enhanced_image_path, file_name)
