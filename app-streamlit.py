@@ -33,7 +33,7 @@ W = 224
 
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model("model.h5", compile=False)
+    model = tf.keras.models.load_model("model-detection.h5", compile=False)
     model.compile(
         loss={
             "bbox": "mse",
