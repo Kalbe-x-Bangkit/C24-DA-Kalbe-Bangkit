@@ -14,8 +14,6 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from datetime import datetime
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 # Environment Configuration
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "./da-kalbe-63ee33c9cdbb.json"
@@ -24,6 +22,10 @@ storage_client = storage.Client()
 bucket_result = storage_client.bucket(bucket_name)
 bucket_name_load = "da-ml-models"
 bucket_load = storage_client.bucket(bucket_name_load)
+
+# Dictionaries to track InstanceNumbers and StudyInstanceUIDs per filename
+instance_numbers = {}
+study_uids = {}
 
 def upload_to_gcs(image_data: io.BytesIO, filename: str, content_type='application/dicom'):
     """Uploads an image to Google Cloud Storage."""
@@ -49,7 +51,8 @@ def load_dicom_from_gcs(file_name: str = "dicom_00000001_000.dcm"):
 
     return ds
 
-def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dicom: str = None):
+def png_to_dicom(image_path: str, image_name: str, file_name: str, instance_number: int = 1, dicom: str = None, study_instance_uid: str = None, ):
+    global instance_numbers, study_uids
     """Converts a PNG image to DICOM, setting related Study/Series UIDs.
 
     Args:
@@ -91,14 +94,26 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
         ds.PixelRepresentation = 0
         ds.PixelData = np_image.tobytes()
 
+        if study_instance_uid:
+            ds.StudyInstanceUID = study_instance_uid
+        else:
+            if file_name not in study_uids:
+                study_uids[file_name] = generate_uid()  # Generate a new UID for the "folder"
+            ds.StudyInstanceUID = study_uids[file_name]
+
         # Generate a new SeriesInstanceUID and SOPInstanceUID for the added image
         ds.SeriesInstanceUID = generate_uid()
         ds.SOPInstanceUID = generate_uid()
 
         if hasattr(ds, 'InstanceNumber'):
-            ds.InstanceNumber = int(ds.InstanceNumber) + 1
+            instance_numbers[file_name] = int(ds.InstanceNumber) + 1
         else:
-            ds.InstanceNumber = instance_number
+            # Manage InstanceNumber based on filename
+            if file_name in instance_numbers:
+                instance_numbers[file_name] += 1
+            else:
+                instance_numbers[file_name] = 1
+        ds.InstanceNumber = int(instance_numbers[file_name])
 
         ds.save_as(image_name)
     else:
@@ -106,16 +121,23 @@ def png_to_dicom(image_path: str, image_name: str, instance_number: int = 1, dic
 
     return ds
 
-def upload_folder_images(original_image_path, enhanced_image_path):
-    # Extract the base name of the uploaded image without the extension
-    folder_name = os.path.splitext(original_image_path)[0]
+def upload_folder_images(original_image_path, enhanced_image_path, file_name):
+    # Convert images to DICOM if result is png
+    if not original_image_path.lower().endswith('.dcm'):
+        original_dicom = png_to_dicom(original_image_path, "original_image.dcm", file_name=file_name)
+    else:
+        original_dicom = pydicom.dcmread(original_image_path)
+    study_instance_uid = original_dicom.StudyInstanceUID
+
+    # Use StudyInstanceUID as folder name
+    folder_name = study_instance_uid
+
     # Create the folder in Cloud Storage
     bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
+
     enhancement_name = enhancement_type.split('_')[-1]
 
-    # Convert images to DICOM
-    original_dicom = png_to_dicom(original_image_path, "original_image.dcm", instance_number=1)
-    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm", instance_number=2)
+    enhanced_dicom = png_to_dicom(enhanced_image_path, enhancement_name + ".dcm", study_instance_uid=study_instance_uid, file_name=file_name)
 
     # Convert DICOM to byte stream for uploading
     original_dicom_bytes = io.BytesIO()
@@ -283,24 +305,39 @@ def enhance_image(image, enhancement_type):
     else:
         raise ValueError(f"Unknown enhancement type: {enhancement_type}")
 
-class FileChangeHandler(FileSystemEventHandler):
-    def on_modified(self, event):
-        if not event.is_directory:
-            st.experimental_rerun()
-
-# Start the watchdog observer
-event_handler = FileChangeHandler()
-observer = Observer()
-observer.schedule(event_handler, ".", recursive=True)
-observer.start()
-
 # Streamlit Interface
 st.title("Image Enhancement and Quality Evaluation")
 
-uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Upload Original Image", type=["png", "jpg", "dcm"])
 enhancement_type = st.radio("Enhancement Type", ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"])
 
 if uploaded_file is not None:
+    # Get the filename
+    file_name = uploaded_file.name
+    if file_name.lower().endswith('.dcm'):
+        # Handle DICOM file
+        ds = pydicom.dcmread(uploaded_file)
+
+        # Extract pixel data
+        pixel_array = ds.pixel_array
+
+        # Handle photometric interpretation
+        if ds.PhotometricInterpretation == 'MONOCHROME1':
+            # Invert grayscale if needed
+            pixel_array = 255 - pixel_array 
+        elif ds.PhotometricInterpretation != 'RGB':
+            st.warning("Unsupported Photometric Interpretation. Displaying as grayscale.")
+            pixel_array = pixel_array.astype(float)
+            pixel_array = (pixel_array - np.min(pixel_array)) / (np.max(pixel_array) - np.min(pixel_array)) * 255
+            pixel_array = pixel_array.astype(np.uint8)
+
+        # Convert to RGB for display in Streamlit
+        original_image = cv2.cvtColor(pixel_array, cv2.COLOR_GRAY2RGB) 
+    else:
+        # Handle PNG/JPG as before
+        original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
+
+    enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
     original_image = np.array(image.load_img(uploaded_file, color_mode='rgb' if enhancement_type == "Invert" else 'grayscale'))
     enhanced_image, mse, psnr, maxerr, l2rat = process_image(original_image, enhancement_type)
 
@@ -319,38 +356,5 @@ if uploaded_file is not None:
     # Save original image to a file
     original_image_path = "original_image.png"
     cv2.imwrite(original_image_path, original_image)
-    upload_folder_images(original_image_path, enhanced_image_path)
 
-st.title("Grad-CAM Visualization")
-
-uploaded_gradcam_file = st.file_uploader("Upload Image for Grad-CAM", type=["png", "jpg", "jpeg"], key="gradcam")
-if uploaded_gradcam_file is not None:
-    df_file = st.file_uploader("Upload DataFrame for Mean/Std Calculation", type=["csv"])
-    labels = st.text_area("Labels", placeholder="Enter labels separated by commas")
-    model_path = st.text_input("Model Path", 'model/densenet.hdf5')
-    pretrained_model_path = st.text_input("Pretrained Model Path", 'model/pretrained_model.h5')
-
-    if df_file and labels and model_path and pretrained_model_path:
-        df = pd.read_csv(df_file)
-        labels = labels.split(',')
-        model = load_model(model_path)
-        pretrained_model = load_model(pretrained_model_path)
-        gradcam_images = compute_gradcam(uploaded_gradcam_file, pretrained_model, df, labels)
-
-        for idx, (gradcam_image, label) in enumerate(gradcam_images):
-            st.image(gradcam_image, caption=f'Grad-CAM {idx+1}: {label}', use_column_width=True)
-            # Save gradcam image to a file
-            gradcam_image_path = f"gradcam_image_{idx+1}.png"
-            cv2.imwrite(gradcam_image_path, gradcam_image)
-            # Create unique folder name
-            folder_name = f"{uploaded_file.name}"
-
-            # Create the folder in Cloud Storage
-            bucket_result.blob(folder_name + '/').upload_from_string('', content_type='application/x-www-form-urlencoded')
-            # Upload the gradcam image to Google Cloud Storage
-            destination_blob_name = f"gradcam_images/{uploaded_gradcam_file.name}_{idx+1}.png"
-            upload_to_gcs(gradcam_image_path, destination_blob_name)
-
-# Stop the observer when the app is stopped (usually handled by Streamlit)
-observer.stop()
-observer.join()
+    upload_folder_images(original_image_path, enhanced_image_path, file_name)
