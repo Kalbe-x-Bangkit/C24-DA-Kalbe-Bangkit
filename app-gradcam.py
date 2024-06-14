@@ -56,7 +56,7 @@ if uploaded_file is not None:
         img_array = np.expand_dims(img_resized, axis=0)
 
         # Load the model
-        model_path = 'C:/Users/Asus/Streamlit/dashboard/model/model_renamed.h5'  # Update this path to your model's path
+        model_path = 'model_renamed.h5'  # Update this path to your model's path
         model = tf.keras.models.load_model(model_path)
 
         # Initialize GradCAM

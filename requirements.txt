@@ -5,8 +5,8 @@ scikit-image
 pydicom
 matplotlib
 scipy
-tensorflow
-keras
+tensorflow>=2.0.0
+keras>=2.8.0
 fastapi
 uvicorn
 pillow
