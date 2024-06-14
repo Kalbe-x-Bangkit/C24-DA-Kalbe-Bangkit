@@ -69,6 +69,47 @@ def draw_bbox(image, bbox):
     image = cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
     return image
 
+st.title("Chest X-ray Disease Detection")
+
+st.write("Upload a chest X-ray image and click on 'Detect' to find out if there's any disease.")
+
+model = load_model()
+
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    image = cv2.imdecode(file_bytes, 1)
+
+    st.image(image, caption='Uploaded Image.', use_column_width=True)
+
+    if st.button('Detect'):
+        st.write("Processing...")
+        input_image = preprocess_image(image)
+        pred_bbox, pred_label, pred_label_confidence = predict(model, input_image)
+
+        label_mapping = {
+            0: 'Atelectasis',
+            1: 'Cardiomegaly',
+            2: 'Effusion',
+            3: 'Infiltrate',
+            4: 'Mass',
+            5: 'Nodule',
+            6: 'Pneumonia',
+            7: 'Pneumothorax'
+        }
+
+        if pred_label_confidence < 0.01:
+            st.write("May not detect a disease.")
+        else:
+            pred_label_name = label_mapping[pred_label]
+            st.write(f"Prediction Label: {pred_label_name}")
+            st.write(f"Prediction Bounding Box: {pred_bbox}")
+            st.write(f"Prediction Confidence: {pred_label_confidence:.2f}")
+
+            output_image = draw_bbox(image.copy(), pred_bbox)
+            st.image(output_image, caption='Detected Image.', use_column_width=True)
+
 # Upload to GCS ###########################################################################
 
 # Dictionaries to track InstanceNumbers and StudyInstanceUIDs per filename
@@ -393,48 +434,6 @@ enhancement_type = st.sidebar.selectbox(
     "Enhancement Type", 
     ["Invert", "High Pass Filter", "Unsharp Masking", "Histogram Equalization", "CLAHE"]
 )
-
-st.title("Chest X-ray Disease Detection")
-
-st.write("Upload a chest X-ray image and click on 'Detect' to find out if there's any disease.")
-
-model = load_model()
-
-if uploaded_file is None:
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-if uploaded_file is not None:
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    image = cv2.imdecode(file_bytes, 1)
-
-    st.image(image, caption='Uploaded Image.', use_column_width=True)
-
-    if st.button('Detect'):
-        st.write("Processing...")
-        input_image = preprocess_image(image)
-        pred_bbox, pred_label, pred_label_confidence = predict(model, input_image)
-
-        label_mapping = {
-            0: 'Atelectasis',
-            1: 'Cardiomegaly',
-            2: 'Effusion',
-            3: 'Infiltrate',
-            4: 'Mass',
-            5: 'Nodule',
-            6: 'Pneumonia',
-            7: 'Pneumothorax'
-        }
-
-        if pred_label_confidence < 0.01:
-            st.write("May not detect a disease.")
-        else:
-            pred_label_name = label_mapping[pred_label]
-            st.write(f"Prediction Label: {pred_label_name}")
-            st.write(f"Prediction Bounding Box: {pred_bbox}")
-            st.write(f"Prediction Confidence: {pred_label_confidence:.2f}")
-
-            output_image = draw_bbox(image.copy(), pred_bbox)
-            st.image(output_image, caption='Detected Image.', use_column_width=True)
 
 st.title("Image Enhancement and Quality Evaluation")
 
