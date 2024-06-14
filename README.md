@@ -12,7 +12,7 @@ Nowadays, one of the problems in the medical industry is inadequate datasets. It
 
 # Dataset
 This project uses the following dataset:
-NIH Chest X-ray Dataset: https://cloud.google.com/healthcare-api/docs/resources/public-datasets/nih-chest
+- NIH Chest X-ray Dataset: https://cloud.google.com/healthcare-api/docs/resources/public-datasets/nih-chest
 
 # Implementations
 ## 5 Types of Image Enhancement
@@ -27,3 +27,12 @@ Centralized medical imaging data and analyzing the acquired data in real time th
 
 # Demo
 The demo of this project is available to be seen at https://huggingface.co/spaces/KalbeDigitalLab/Cloud-PACS-AI-Integration
+
+# Acknowledgements
+- (ML) M010D4KY2744 - Rifqi Aditya - Universitas Indonesia
+- (ML) M010D4KY2867 - Muhammad Fadli - Universitas Indonesia
+- (ML) M010D4KY2895 - Aditya Bintang Aprilio - Universitas Indonesia
+- (ML) M010D4KY2508 - Awaludin Ahmad Hafiz - Universitas Indonesia
+- (CC) C004D4KY1049 - Timothy Hosia Budianto - Institut Teknologi Sepuluh Nopember
+- (CC) C009D4KY0382 - Muhammad Rafi Widyadhana - Universitas Gunadarma
+
