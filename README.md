@@ -24,3 +24,6 @@ There are 2 types of AI models can be selected to automated diagnosis of the ima
 ## Clo﻿ud-based PACS
 Centralized medical imaging data and analyzing the acquired data in real time through interactive UI assisted by ML models. This allows various healthcare institutions to collaborate and store data in real time, hence solving the inadequacy of the data.
 
+
+# Demo
+The demo of this project is available to be seen at https://huggingface.co/spaces/KalbeDigitalLab/Cloud-PACS-AI-Integration
